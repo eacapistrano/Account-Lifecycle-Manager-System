@@ -1,0 +1,53 @@
+# -----------------------------------------------------------------------------
+# Local environment & secrets — never commit real credentials
+# -----------------------------------------------------------------------------
+.env
+.env.*
+!.env.example
+!**/.env.example
+.cursor/
+
+# -----------------------------------------------------------------------------
+# Keys, certificates, common cloud credential filenames
+# -----------------------------------------------------------------------------
+*.pem
+*.p12
+*.pfx
+*.crt
+
+# Composer HTTP auth (https://getcomposer.org/doc/articles/authentication.md)
+auth.json
+
+# Service account / credential exports (add project-specific names if needed)
+*-credentials.json
+*credentials*.json
+
+# -----------------------------------------------------------------------------
+# Dependencies & build output (monorepo)
+# -----------------------------------------------------------------------------
+**/node_modules/
+**/vendor/
+**/dist/
+backend/public/build/
+backend/public/hot/
+
+# -----------------------------------------------------------------------------
+# OS & editors
+# -----------------------------------------------------------------------------
+.DS_Store
+Thumbs.db
+*.log
+.idea/
+*.swp
+*.swo
+
+# -----------------------------------------------------------------------------
+# Cursor: share team rules; do not commit ad-hoc plans (often contain local paths)
+# -----------------------------------------------------------------------------
+.cursor/plans/
+
+# -----------------------------------------------------------------------------
+# Misc
+# -----------------------------------------------------------------------------
+.phpunit.result.cache
+*.local
