@@ -166,6 +166,7 @@ class StudentController extends Controller
             'action' => 'delete',
             'count' => count($ids),
             'operation_id' => $operationId,
+            'dry_run' => config('security.student_delete_dry_run'),
         ], 202);
     }
 

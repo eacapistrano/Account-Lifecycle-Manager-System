@@ -74,7 +74,8 @@ class StudentBulkActionsTest extends TestCase
             ->assertStatus(202)
             ->assertJsonPath('queued', true)
             ->assertJsonPath('action', 'delete')
-            ->assertJsonPath('count', 1);
+            ->assertJsonPath('count', 1)
+            ->assertJsonPath('dry_run', false);
 
         $operationId = (string) $response->json('operation_id');
         $this->assertNotSame('', $operationId);
@@ -93,5 +94,22 @@ class StudentBulkActionsTest extends TestCase
         $this->assertSame('delete', $operation->action);
         $this->assertSame('queued', $operation->status);
         $this->assertSame(1, $operation->total);
+    }
+
+    public function test_delete_endpoint_json_includes_dry_run_flag_when_enabled(): void
+    {
+        config(['security.student_delete_dry_run' => true]);
+        Queue::fake();
+        Sanctum::actingAs(User::factory()->create());
+
+        $response = $this->postJson('/api/students/delete', [
+            'account_ids' => ['mock:user:2001', 'mock:user:2002'],
+            'confirmation_phrase' => (string) config('security.delete_confirmation_phrase'),
+        ]);
+
+        $response
+            ->assertStatus(202)
+            ->assertJsonPath('dry_run', true)
+            ->assertJsonPath('count', 2);
     }
 }

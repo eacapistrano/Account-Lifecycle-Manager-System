@@ -2,10 +2,14 @@
 
 namespace App\Providers;
 
+use App\Contracts\GoogleWorkspaceUserDeleter;
+use App\Services\GoogleWorkspaceDirectoryUserDeleter;
+use App\Services\NullGoogleWorkspaceUserDeleter;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\ServiceProvider;
+use Laravel\Telescope\TelescopeApplicationServiceProvider;
 
 class AppServiceProvider extends ServiceProvider
 {
@@ -14,7 +18,24 @@ class AppServiceProvider extends ServiceProvider
      */
     public function register(): void
     {
-        //
+        $this->app->singleton(GoogleWorkspaceUserDeleter::class, function (): GoogleWorkspaceUserDeleter {
+            if (! config('google_workspace.delete_enabled')) {
+                return new NullGoogleWorkspaceUserDeleter;
+            }
+
+            /** @var array<int, string> $scopes */
+            $scopes = config('google_workspace.scopes');
+
+            return new GoogleWorkspaceDirectoryUserDeleter(
+                credentialsPath: (string) config('google_workspace.credentials_path'),
+                impersonateEmail: (string) config('google_workspace.impersonate_email'),
+                scopes: $scopes,
+            );
+        });
+
+        if (class_exists(TelescopeApplicationServiceProvider::class)) {
+            $this->app->register(TelescopeServiceProvider::class);
+        }
     }
 
     /**

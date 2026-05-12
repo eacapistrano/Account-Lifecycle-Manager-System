@@ -38,9 +38,9 @@ export function useStudentDeletionOperationPolling({
         if (!cancelled) {
           setTracker(status);
         }
-      } catch {
+      } catch (e) {
         if (!cancelled) {
-          pushError("Lost operation status.");
+          pushError(e instanceof Error ? e.message : "Failed to load operation status.");
         }
       }
     }
@@ -77,7 +77,19 @@ export function useStudentDeletionOperationPolling({
     }
     terminalHandledRef.current.add(terminalKey);
 
-    pushMessage(`Bulk ${tracker.action} finished (${tracker.status}): OK ${tracker.ok}, failed ${tracker.failed}.`);
+    if (tracker.status === "failed") {
+      const detail = tracker.error?.trim()
+        ? tracker.error
+        : "The job failed before processing finished.";
+      pushError(`Bulk ${tracker.action} failed: ${detail}`);
+    } else if (tracker.failed > 0) {
+      const detail = tracker.error?.trim()
+        ? tracker.error
+        : `${tracker.failed} account(s) failed; ${tracker.ok} succeeded.`;
+      pushError(`Bulk ${tracker.action} completed with errors: ${detail}`);
+    } else {
+      pushMessage(`Bulk ${tracker.action} finished (${tracker.status}): OK ${tracker.ok}, failed ${tracker.failed}.`);
+    }
     void loadStudents();
     void loadHistory();
 
@@ -89,7 +101,7 @@ export function useStudentDeletionOperationPolling({
       setTrackingId(null);
       setTracker(null);
     }, 6000);
-  }, [tracker, pushMessage, loadStudents, loadHistory, setTrackingId]);
+  }, [tracker, pushMessage, pushError, loadStudents, loadHistory, setTrackingId]);
 
   return tracker;
 }
