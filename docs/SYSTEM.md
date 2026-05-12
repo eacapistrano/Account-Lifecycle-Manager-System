@@ -67,11 +67,80 @@
 - **Alternate Flows:** Empty result set still returns valid export with headers/metadata.
 
 ### UC-09 Import from External Database
-- **Actor:** IT Admin or Scheduler
-- **Preconditions:** `STUDENT_IMPORT_ENABLED=true`; read-only `source_students` connection; column map matches source table/view.
-- **Main Flow:** Import job reads external table in chunks, upserts into `students` by `external_account_id`, sets `last_imported_at`.
-- **Postconditions:** Row counts and duration audited under `student.import`.
-- **Alternate Flows:** Second concurrent import skipped (cache lock); connection or mapping errors audited as failure.
+- **Actor:** IT Admin (API), operator (Artisan), or Scheduler
+- **Preconditions:** `STUDENT_IMPORT_ENABLED=true`; read-only external DB credentials on Laravel connection `source_students` (`SOURCE_DB_*`); `student_import.column_map` aligned with the source table or view; a valid strategy for `primary_email` (mapped column, optional CSV merge, and/or CEU formula generation—see [Student import from external registry](#student-import-from-external-registry)).
+- **Main Flow:** `StudentImportService` reads the configured external table in ordered chunks, normalizes fields, resolves emails when needed, and **upserts** application `students` rows keyed by `external_account_id`, setting `last_imported_at` and storing the raw source row in `raw_json`.
+- **Postconditions:** Summary audited (`processed`, `skipped_no_email`, `duration_ms`) for queued/API paths; CLI prints the same counters.
+- **Alternate Flows:** Concurrent runs excluded via cache lock `student_import_lock`; rows without usable external id or valid email are skipped (`skipped_no_email`); misconfiguration throws before querying the source.
+
+## Student import from external registry
+
+This section is the operational guide for syncing student rows from an external SIS or registry database into the application database.
+
+### What the importer does
+
+- Connects using the Laravel DB connection named in `STUDENT_IMPORT_DB_CONNECTION` (default: `source_students`).
+- Runs `SELECT *`-style reads from `STUDENT_IMPORT_TABLE` with optional static `WHERE` clauses defined **only** in `config/student_import.php` (`where` array)—never from HTTP input.
+- Processes rows in chunks (`STUDENT_IMPORT_CHUNK_SIZE`, clamped between 50 and 2000).
+- For each row, maps source columns to app attributes per `column_map`, normalizes `graduation_date` and optional `suspended`, optionally builds `full_name` from multiple CARES-style columns, resolves `primary_email`, then **upserts** on `external_account_id`.
+- Sets `last_imported_at` on imported rows and saves the full source row as JSON in `raw_json` for traceability.
+
+### Prerequisites checklist
+
+1. **Enable the feature:** `STUDENT_IMPORT_ENABLED=true`.
+2. **Wire the external database:** Set `SOURCE_DB_*` (and optional `SOURCE_DB_URL`) so the `source_students` connection in `config/database.php` reaches the registry with a **read-only** user where possible.
+3. **Point at the correct table/view:** `STUDENT_IMPORT_TABLE` (e.g. CARES `lgrrs` or a read-only view).
+4. **Column map:** At minimum, `external_account_id` must map to the stable student identifier column on the source. Other attributes map via `STUDENT_IMPORT_COL_*` env vars (see `backend/.env.example`).
+5. **Chunk ordering:** Set `STUDENT_IMPORT_ORDER_BY_COLUMN` when the default (the external id column) is not suitable for stable `orderBy` + `chunk()`.
+6. **Primary email:** You must satisfy one of the strategies in [Primary email strategies](#primary-email-strategies) or the import will refuse to run.
+
+### Primary email strategies
+
+The application requires a valid email for each imported row. Configure one or combine approaches:
+
+| Approach | When to use | Configuration |
+|----------|-------------|----------------|
+| **Map from source** | Source table has an email column | Set `STUDENT_IMPORT_COL_EMAIL` to that column name (`column_map` then includes `primary_email`). |
+| **CSV merge** | Source has no email column; you have an export (e.g. Google Workspace) with id → email | Set `STUDENT_IMPORT_EMAIL_CSV_PATH` to an absolute readable path, and align `STUDENT_IMPORT_EMAIL_CSV_ID_COLUMN` / `STUDENT_IMPORT_EMAIL_CSV_EMAIL_COLUMN` with the CSV headers. Invalid emails in the file are skipped with a warning log. |
+| **CLI-only CSV** | Same as CSV but path varies per run | Run `php artisan students:import-from-source --email-csv=/path/to/file.csv` (overrides config path when provided). |
+| **CEU formula** | No email column and CSV unavailable; IDs follow CEU “Email List Creation Formula” | Set `STUDENT_IMPORT_GENERATE_PRIMARY_EMAIL=true`, leave `STUDENT_IMPORT_COL_EMAIL` empty so `primary_email` is not sourced from the table, and tune `STUDENT_IMPORT_EMAIL_FORMULA_*` / domains. Implemented in `App\Services\CeuEmailListFormulaGenerator`. |
+
+If `primary_email` is **not** mapped from the source, you must provide **either** a non-empty CSV map (config or `--email-csv`) **or** enable formula generation. The queued job and API import path load the CSV from config only; use Artisan when you need a one-off CSV path.
+
+### Composite full name (CARES-style)
+
+When the source stores first, middle, and last names in separate columns, set `STUDENT_IMPORT_COMPOSITE_FULL_NAME` to a comma-separated list of column names (e.g. `SZFNAME,SZMNAME,SZLNAME`). The importer joins non-empty parts with spaces into `full_name` and **ignores** any `full_name` entry in `column_map` for mapping purposes.
+
+### Static filters and performance
+
+- Add restrictive clauses only inside `config/student_import.php` → `'where' => [ ['COLUMN', '=', 'value'], ... ],` to limit scope (e.g. active term). Values must remain maintainer-controlled, not user-supplied.
+- Tune `STUDENT_IMPORT_CHUNK_SIZE` for memory and DB load.
+- `STUDENT_IMPORT_LOCK_TTL` (seconds) bounds how long the concurrent-import lock is held if a worker stops unexpectedly.
+
+### How to run an import
+
+| Trigger | Details |
+|---------|---------|
+| **Scheduler** | When `STUDENT_IMPORT_ENABLED` is true, `bootstrap/app.php` schedules `ImportStudentsJob` on `STUDENT_IMPORT_CRON` (default `0 2 * * *`). Requires the queue worker to process the default queue. |
+| **API** | Authenticated admin calls `POST /students/import` (permission `student_import.run`, throttled). Returns `202` with `queued: true`. Passes user id and request correlation id into the job for audit. Uses config CSV path only—not `--email-csv`. |
+| **Artisan** | `php artisan students:import-from-source` runs the import **inline** (not queued) when import is enabled. Optional `--email-csv=` merges emails from that file. |
+
+### Concurrency and auditing
+
+- **Lock:** `ImportStudentsJob` acquires `Cache::lock('student_import_lock', lock_ttl)`. If the lock is not acquired, the job exits without throwing (another import is in progress).
+- **Audit (queued path only):** On success, `AuditLogger` records module `student_deletion`, action `student.import`, payload including `processed`, `skipped_no_email`, `duration_ms`, `source: database`, and optional `correlation_id`. Failures record the exception message. The Artisan command does not duplicate this audit—it prints counters to the console.
+
+### Validation and common errors
+
+- **`student_import.column_map must include external_account_id`:** Mapping missing or invalid after resolving empty string columns.
+- **`Student import requires primary_email...`:** No column mapping, no CSV data, and formula generation off—enable one of the strategies above.
+- **`Email CSV is not readable` / header errors:** Fix path, permissions, or header names to match `STUDENT_IMPORT_EMAIL_CSV_*`.
+- **`Student upsert failed`:** Usually a DB constraint or type mismatch—inspect the wrapped SQL error and compare source types to the `students` table.
+
+### Reference documentation
+
+- Laravel task scheduling: [Task Scheduling](https://laravel.com/docs/scheduling)
+- Queued jobs and workers: [Queues](https://laravel.com/docs/queues)
 
 ## Operational Prompts
 
@@ -119,13 +188,19 @@ function recordAudit(module, action, targetAccountId, payload, success, error, a
 ### External import (chunked upsert)
 
 ```text
-ImportStudentsJob (with cache lock "student_import_lock"):
-  map = config student_import.column_map (app_field => source_column)
-  query = SELECT * FROM source_table [static where clauses from config only]
-  for each chunk of rows:
-    normalize dates/booleans
-    upsert into students on external_account_id
-  audit student.import with processed count and duration_ms
+ImportStudentsJob / StudentImportService (CLI runs service directly):
+  acquire cache lock "student_import_lock" (job only; CLI does not use lock)
+  map = resolved column_map (drop full_name mapping if composite_full_name_columns set)
+  optional emailMap = CSV from config path, --email-csv, or null
+  if primary_email not in map and no emailMap and generate_primary_email false:
+    fail fast (InvalidArgumentException)
+  query = source connection.table(source_table) + static where[] from config
+  orderBy = STUDENT_IMPORT_ORDER_BY_COLUMN or external_account_id source column
+  for each chunk:
+    map columns; composite full_name; merge CSV email or CEU formula when needed
+    skip row if no external_account_id, no valid email, or invalid email format
+    upsert students on external_account_id; set last_imported_at, raw_json
+  job: audit student.import with processed, skipped_no_email, duration_ms
 ```
 
 ### Policy evaluation and scheduling

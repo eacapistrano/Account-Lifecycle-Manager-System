@@ -43,6 +43,7 @@ class ImportStudentsJob implements ShouldQueue
                 [
                     'correlation_id' => $this->correlationId,
                     'processed' => $stats['processed'],
+                    'skipped_no_email' => $stats['skipped_no_email'] ?? 0,
                     'duration_ms' => $stats['duration_ms'],
                     'source' => 'database',
                 ],
