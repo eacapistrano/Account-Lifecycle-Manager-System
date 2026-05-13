@@ -11,6 +11,10 @@ use App\Http\Controllers\Api\StudentController;
 use App\Http\Controllers\Api\SuspendedAccountController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
+use App\Http\Controllers\GoogleUserController;
+
+
+Route::post('/delete-google-user', [GoogleUserController::class, 'deleteUser']);
 
 Route::post('/auth/login', [AuthController::class, 'login'])->middleware('throttle:login');
 Route::post('/login', [AuthController::class, 'login'])->middleware('throttle:login');
