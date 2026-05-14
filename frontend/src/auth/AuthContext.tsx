@@ -8,15 +8,19 @@ import type { AuthContextValue } from "./context";
 
 function readSavedUser(): AuthUser | null {
   const raw = localStorage.getItem("api_user");
+
   if (!raw) {
     return null;
   }
 
   try {
     const parsed = JSON.parse(raw) as AuthUser;
+
     return {
       ...parsed,
-      permissions: Array.isArray(parsed.permissions) ? parsed.permissions : [],
+      permissions: Array.isArray(parsed.permissions)
+        ? parsed.permissions
+        : [],
     };
   } catch {
     return null;
@@ -24,21 +28,34 @@ function readSavedUser(): AuthUser | null {
 }
 
 export function AuthProvider({ children }: PropsWithChildren) {
-  const [token, setToken] = useState<string>(localStorage.getItem("api_token") ?? "");
-  const [user, setUser] = useState<AuthUser | null>(readSavedUser);
+
+  const [token, setToken] = useState<string>(() => {
+    return localStorage.getItem("api_token") ?? "";
+  });
+
+  const [user, setUser] = useState<AuthUser | null>(() => {
+    return readSavedUser();
+  });
 
   async function login(payload: LoginPayload) {
     try {
       const result = await apiRequest<LoginResponse>("/auth/login", {
         method: "POST",
-        body: JSON.stringify({ ...payload, device_name: "react-spa" }),
+        body: JSON.stringify({
+          ...payload,
+          device_name: "react-spa",
+        }),
       });
+
       setToken(result.token);
       setUser(result.user);
+
       localStorage.setItem("api_token", result.token);
       localStorage.setItem("api_user", JSON.stringify(result.user));
+
     } catch {
-      // Fallback user keeps the shell usable before backend auth is finalized.
+
+      // fallback demo login
       const demoUser: AuthUser = {
         id: 0,
         name: "IT Admin",
@@ -46,9 +63,12 @@ export function AuthProvider({ children }: PropsWithChildren) {
         role: "admin",
         permissions: [...ALL_PERMISSION_SLUGS],
       };
+
       const demoToken = "demo-token";
+
       setToken(demoToken);
       setUser(demoUser);
+
       localStorage.setItem("api_token", demoToken);
       localStorage.setItem("api_user", JSON.stringify(demoUser));
     }
@@ -56,13 +76,16 @@ export function AuthProvider({ children }: PropsWithChildren) {
 
   async function logout() {
     try {
-      await apiRequest<{ ok?: boolean }>("/auth/logout", { method: "POST" });
+      await apiRequest<{ ok?: boolean }>("/auth/logout", {
+        method: "POST",
+      });
     } catch {
-      // Best-effort logout; always clear local auth state.
+      // ignore logout errors
     }
 
     localStorage.removeItem("api_token");
     localStorage.removeItem("api_user");
+
     setToken("");
     setUser(null);
   }
@@ -87,5 +110,9 @@ export function AuthProvider({ children }: PropsWithChildren) {
     [hasPermission, token, user]
   );
 
-  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
+  return (
+    <AuthContext.Provider value={value}>
+      {children}
+    </AuthContext.Provider>
+  );
 }

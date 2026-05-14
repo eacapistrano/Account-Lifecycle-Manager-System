@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\User;
 use Illuminate\Support\Facades\Auth;
 use Laravel\Socialite\Facades\Socialite;
+use Laravel\Sanctum\HasApiTokens;
 use Illuminate\Support\Str;
 
 class GoogleAuthController extends Controller
@@ -21,7 +22,7 @@ class GoogleAuthController extends Controller
             $googleUser = Socialite::driver('google')->stateless()->user();
 
             if (empty($googleUser->email)) {
-                return redirect('http://localhost:5173')
+                return redirect('http://localhost:5173/dashboard')
                     -> withErrors('No email returned from Google account.');
             }
 
@@ -56,7 +57,9 @@ class GoogleAuthController extends Controller
 
             Auth::login($user);
 
-            return redirect()->route('home');
+            $token = $user->createToken('google-token')->plainTextToken;
+
+            return redirect('http://localhost:5173/dashboard?token=' . $token);
 
         } catch (\Exception $e) {
             \Log::error('Google OAuth Error', [
