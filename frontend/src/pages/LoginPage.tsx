@@ -51,6 +51,13 @@ export function LoginPage() {
         <button type="submit" disabled={busy}>
           {busy ? "Signing in..." : "Sign in"}
         </button>
+
+        <a
+            href="http://127.0.0.1:8000/auth/google/redirect"
+            className="btn btn-danger w-100"> Login with Google
+        </a>
+
+
         {error ? <p className="error">{error}</p> : null}
       </form>
     </section>
