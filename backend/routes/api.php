@@ -3,16 +3,16 @@
 use App\Http\Controllers\Api\AuditLogController;
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\AuthorizationUserController;
+use App\Http\Controllers\Api\AutomationQueueController;
 use App\Http\Controllers\Api\DashboardController;
 use App\Http\Controllers\Api\PermissionController;
 use App\Http\Controllers\Api\PolicyController;
 use App\Http\Controllers\Api\RoleController;
 use App\Http\Controllers\Api\StudentController;
 use App\Http\Controllers\Api\SuspendedAccountController;
+use App\Http\Controllers\GoogleUserController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
-use App\Http\Controllers\GoogleUserController;
-
 
 Route::post('/delete-google-user', [GoogleUserController::class, 'deleteUser']);
 
@@ -38,6 +38,8 @@ Route::middleware(['auth:sanctum', 'throttle:api', 'audit.append'])->group(funct
     Route::get('/policies', [PolicyController::class, 'index']);
     Route::get('/policies/{policy}', [PolicyController::class, 'show']);
     Route::get('/policies/{policy}/next-run', [PolicyController::class, 'nextRun']);
+
+    Route::get('/automation/queue', [AutomationQueueController::class, 'index']);
 
     Route::get('/audit-events', [AuditLogController::class, 'index']);
     Route::get('/audit', [AuditLogController::class, 'index']);
@@ -85,6 +87,7 @@ Route::middleware(['auth:sanctum', 'throttle:api', 'audit.append'])->group(funct
         Route::post('/policies', [PolicyController::class, 'store']);
         Route::patch('/policies/{policy}', [PolicyController::class, 'update']);
         Route::delete('/policies/{policy}', [PolicyController::class, 'destroy']);
+        Route::post('/automation/queue/dispatch', [AutomationQueueController::class, 'dispatch']);
     });
 
     Route::middleware(['permission:audit.export', 'throttle:sensitive'])->group(function (): void {

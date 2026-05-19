@@ -1,10 +1,10 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import type { PropsWithChildren } from "react";
-import { ALL_PERMISSION_SLUGS } from "../constants/permissionSlugs";
 import { apiRequest } from "../lib/api";
 import type { AuthUser, LoginPayload, LoginResponse } from "../types/auth";
 import { AuthContext } from "./context";
 import type { AuthContextValue } from "./context";
+import { readOAuthTokenFromUrl, stripOAuthTokenFromUrl } from "./oauthBootstrap";
 
 function readSavedUser(): AuthUser | null {
   const raw = localStorage.getItem("api_user");
@@ -28,6 +28,9 @@ function readSavedUser(): AuthUser | null {
 }
 
 export function AuthProvider({ children }: PropsWithChildren) {
+  const [isBootstrapping, setIsBootstrapping] = useState(
+    () => readOAuthTokenFromUrl() !== null
+  );
 
   const [token, setToken] = useState<string>(() => {
     return localStorage.getItem("api_token") ?? "";
@@ -37,41 +40,72 @@ export function AuthProvider({ children }: PropsWithChildren) {
     return readSavedUser();
   });
 
-  async function login(payload: LoginPayload) {
-    try {
-      const result = await apiRequest<LoginResponse>("/auth/login", {
-        method: "POST",
-        body: JSON.stringify({
-          ...payload,
-          device_name: "react-spa",
-        }),
-      });
+  useEffect(() => {
+    const oauthToken = readOAuthTokenFromUrl();
 
-      setToken(result.token);
-      setUser(result.user);
-
-      localStorage.setItem("api_token", result.token);
-      localStorage.setItem("api_user", JSON.stringify(result.user));
-
-    } catch {
-
-      // fallback demo login
-      const demoUser: AuthUser = {
-        id: 0,
-        name: "IT Admin",
-        email: payload.email,
-        role: "admin",
-        permissions: [...ALL_PERMISSION_SLUGS],
-      };
-
-      const demoToken = "demo-token";
-
-      setToken(demoToken);
-      setUser(demoUser);
-
-      localStorage.setItem("api_token", demoToken);
-      localStorage.setItem("api_user", JSON.stringify(demoUser));
+    if (!oauthToken) {
+      return;
     }
+
+    let cancelled = false;
+    const tokenFromUrl: string = oauthToken;
+
+    async function bootstrapOAuthSession() {
+      setIsBootstrapping(true);
+      localStorage.setItem("api_token", tokenFromUrl);
+      setToken(tokenFromUrl);
+
+      try {
+        const profile = await apiRequest<AuthUser>("/me");
+        if (cancelled) {
+          return;
+        }
+
+        setUser(profile);
+        localStorage.setItem("api_user", JSON.stringify(profile));
+        stripOAuthTokenFromUrl();
+      } catch {
+        if (cancelled) {
+          return;
+        }
+
+        localStorage.removeItem("api_token");
+        localStorage.removeItem("api_user");
+        setToken("");
+        setUser(null);
+        stripOAuthTokenFromUrl();
+        window.location.replace(
+          "/login?error=" +
+            encodeURIComponent("Google sign-in succeeded but the session could not be loaded."),
+        );
+      } finally {
+        if (!cancelled) {
+          setIsBootstrapping(false);
+        }
+      }
+    }
+
+    void bootstrapOAuthSession();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  async function login(payload: LoginPayload): Promise<void> {
+    const result = await apiRequest<LoginResponse>("/login", {
+      method: "POST",
+      body: JSON.stringify({
+        ...payload,
+        device_name: "react-spa",
+      }),
+    });
+
+    localStorage.setItem("api_token", result.token);
+    localStorage.setItem("api_user", JSON.stringify(result.user));
+
+    setToken(result.token);
+    setUser(result.user);
   }
 
   async function logout() {
@@ -103,11 +137,12 @@ export function AuthProvider({ children }: PropsWithChildren) {
       user,
       token,
       isAuthenticated: Boolean(token && user),
+      isBootstrapping,
       hasPermission,
       login,
       logout,
     }),
-    [hasPermission, token, user]
+    [hasPermission, isBootstrapping, token, user]
   );
 
   return (

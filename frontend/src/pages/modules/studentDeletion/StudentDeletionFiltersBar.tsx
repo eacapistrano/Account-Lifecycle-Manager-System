@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import type { StudentFiltersState } from "./studentDeletionTypes";
 
 type Props = {
@@ -15,36 +16,59 @@ export function StudentDeletionFiltersBar({
   onFiltersChange,
   onPerPageChange,
 }: Props) {
-  function patch<K extends keyof StudentFiltersState>(key: K, value: StudentFiltersState[K]) {
-    onFiltersChange({ ...filters, [key]: value });
+  const [searchDraft, setSearchDraft] = useState(filters.search);
+
+  useEffect(() => {
+    setSearchDraft(filters.search);
+  }, [filters.search]);
+
+  function applySearch() {
+    onFiltersChange({ ...filters, search: searchDraft.trim() });
+  }
+
+  function patchEmail(value: string) {
+    onFiltersChange({ ...filters, email: value });
   }
 
   return (
     <div className="audit-filters student-filters">
       <label>
-        Department
-        <input value={filters.department} onChange={(ev) => patch("department", ev.target.value)} placeholder="Science" disabled={disabled} />
+        Email
+        <input
+          value={filters.email}
+          onChange={(ev) => patchEmail(ev.target.value)}
+          placeholder="ava.chen@school.example"
+          disabled={disabled}
+        />
       </label>
-      <label>
-        School year
-        <input value={filters.school_year} onChange={(ev) => patch("school_year", ev.target.value)} placeholder="2026" disabled={disabled} />
+      <label className="student-search-field">
+        Search all columns
+        <div className="student-search-row">
+          <input
+            value={searchDraft}
+            onChange={(ev) => setSearchDraft(ev.target.value)}
+            onKeyDown={(ev) => {
+              if (ev.key === "Enter") {
+                ev.preventDefault();
+                applySearch();
+              }
+            }}
+            placeholder="Name, dept, year, graduation, status, registry ID…"
+            disabled={disabled}
+          />
+          <button type="button" onClick={applySearch} disabled={disabled}>
+            Search
+          </button>
+        </div>
       </label>
       <label>
         Graduation status
         <input
           value={filters.graduation_status}
-          onChange={(ev) => patch("graduation_status", ev.target.value)}
+          onChange={(ev) => onFiltersChange({ ...filters, graduation_status: ev.target.value })}
           placeholder="graduated"
           disabled={disabled}
         />
-      </label>
-      <label>
-        Graduated from
-        <input type="date" value={filters.graduated_from} onChange={(ev) => patch("graduated_from", ev.target.value)} disabled={disabled} />
-      </label>
-      <label>
-        Graduated to
-        <input type="date" value={filters.graduated_to} onChange={(ev) => patch("graduated_to", ev.target.value)} disabled={disabled} />
       </label>
       <label className="audit-page-size">
         Rows
@@ -57,3 +81,4 @@ export function StudentDeletionFiltersBar({
     </div>
   );
 }
+

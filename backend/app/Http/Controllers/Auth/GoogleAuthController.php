@@ -3,71 +3,71 @@
 namespace App\Http\Controllers\Auth;
 
 use App\Http\Controllers\Controller;
+use App\Models\Role;
 use App\Models\User;
-use Illuminate\Support\Facades\Auth;
-use Laravel\Socialite\Facades\Socialite;
-use Laravel\Sanctum\HasApiTokens;
+use Illuminate\Http\RedirectResponse;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
+use Laravel\Socialite\Facades\Socialite;
+use Laravel\Socialite\Two\AbstractProvider;
 
 class GoogleAuthController extends Controller
 {
-    public function redirect()
+    public function redirect(): RedirectResponse
     {
         return Socialite::driver('google')->redirect();
     }
 
-    public function callback()
+    public function callback(): RedirectResponse
     {
+        $frontendUrl = rtrim((string) config('app.frontend_url'), '/');
+
         try {
-            $googleUser = Socialite::driver('google')->stateless()->user();
+            /** @var AbstractProvider $googleProvider */
+            $googleProvider = Socialite::driver('google');
+            $googleUser = $googleProvider->stateless()->user();
 
             if (empty($googleUser->email)) {
-                return redirect('http://localhost:5173/dashboard')
-                    -> withErrors('No email returned from Google account.');
+                return redirect($this->loginUrl($frontendUrl, 'No email returned from Google account.'));
             }
 
-            $user = User::where('google_id', $googleUser->id)
+            $user = User::query()
+                ->where('google_id', $googleUser->id)
                 ->orWhere('email', $googleUser->email)
                 ->first();
 
-            if (!$user) {
+            if (! $user) {
                 $user = User::create([
-                    'name'      => $googleUser->name,
-                    'email'     => $googleUser->email,
+                    'name' => $googleUser->name ?? $googleUser->email,
+                    'email' => $googleUser->email,
                     'google_id' => $googleUser->id,
-                    'provider'  => 'google',
-                    'avatar'    => $googleUser->avatar,
-                    'password'  => bcrypt(Str::random(24)),
-                    'role_name' => 'User',
-                    'status'    => 'Active',
-                    'join_date' => now(),
+                    'provider' => 'google',
+                    'avatar' => $googleUser->avatar,
+                    'password' => bcrypt(Str::random(24)),
+                    'role_id' => Role::query()->where('slug', 'viewer')->value('id'),
                 ]);
-            } else {
-                if (!$user->google_id) {
-                    $user->update([
-                        'google_id' => $googleUser->id,
-                        'provider'  => 'google',
-                    ]);
-                }
+            } elseif (! $user->google_id) {
+                $user->update([
+                    'google_id' => $googleUser->id,
+                    'provider' => 'google',
+                    'avatar' => $googleUser->avatar ?? $user->avatar,
+                ]);
             }
-
-            $user->update([
-                'last_login' => now(),
-            ]);
-
-            Auth::login($user);
 
             $token = $user->createToken('google-token')->plainTextToken;
 
-            return redirect('http://localhost:5173/dashboard?token=' . $token);
-
-        } catch (\Exception $e) {
-            \Log::error('Google OAuth Error', [
+            return redirect($frontendUrl.'/dashboard?api_token='.urlencode($token));
+        } catch (\Throwable $e) {
+            Log::error('Google OAuth Error', [
                 'message' => $e->getMessage(),
             ]);
 
-            return redirect('http://localhost:5173')
-                ->withErrors('Authentication failed. Please try again.');
+            return redirect($this->loginUrl($frontendUrl, 'Authentication failed. Please try again.'));
         }
+    }
+
+    private function loginUrl(string $frontendUrl, string $message): string
+    {
+        return $frontendUrl.'/login?error='.urlencode($message);
     }
 }

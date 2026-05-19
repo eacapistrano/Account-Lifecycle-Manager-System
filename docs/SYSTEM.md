@@ -34,16 +34,16 @@
 ### UC-04 Define Policy and Schedule
 - **Actor:** IT Admin
 - **Preconditions:** Policy module available; admin authenticated.
-- **Main Flow:** Admin creates policy with rule scope, action, and execution time/cron metadata.
+- **Main Flow:** Admin creates a **scope** policy (department/school year + suspend/delete) or a **student graduation** policy (warn email N days before suspend, suspend M days after `graduation_date`). Execution metadata (optional `execution_at`, `cron_expression`) is stored for review; the platform scheduler uses global cron env vars.
 - **Postconditions:** Policy persisted and becomes eligible for scheduler evaluation.
-- **Alternate Flows:** Validation errors (invalid action/date/rules) prevent persistence.
+- **Alternate Flows:** Validation errors (invalid action/date/rules) prevent persistence. Graduation policies require `action=suspend` and valid day offsets.
 
 ### UC-05 Auto-Execute Policy or Hold
 - **Actor:** System Scheduler
-- **Preconditions:** Active policies exist.
-- **Main Flow:** Scheduler dispatches policy job, evaluates current time and matching students, applies local suspend/delete when conditions are met.
-- **Postconditions:** Policy status updated (`executed` or `held`) and per-account audit events written.
-- **Alternate Flows:** No matched users sets policy to hold with reason; per-account failures are captured.
+- **Preconditions:** Active policies exist; queue worker running for queued jobs.
+- **Main Flow:** Scheduler dispatches `EvaluatePoliciesJob`. Scope policies suspend/delete matched students. Graduation policies: (1) send `GraduationAccountNoticeMail` to students in the warning window who have not been notified; (2) suspend students whose graduation date is at least 60 days ago (configurable per policy / env).
+- **Postconditions:** Policy status updated (`executed` or `held`) and per-account audit events written (`policy.graduation_warning`, `policy.suspend`, etc.).
+- **Alternate Flows:** No matched users sets policy to hold with reason; per-account failures are captured. Ops email when holds/failures occur if `AUTOMATION_NOTIFICATIONS_ENABLED=true`.
 
 ### UC-06 Suspended List and Priority Flag
 - **Actor:** IT Admin
@@ -216,16 +216,21 @@ EvaluatePoliciesJob:
       mark held("Execution time not reached")
       continue
 
-    students = query students by rule_json filters (department, school_year)
-    if students is empty:
-      mark held("No accounts matched policy scope")
-      continue
+    if rule_json.type == student_graduation:
+      for each graduated student with graduation_date:
+        if today >= graduation_date + suspend_after_days:
+          suspend locally; audit policy.suspend
+        else if today >= graduation_date + suspend_after_days - warning_days_before_suspend
+             and graduation_warning_sent_at is null:
+          send GraduationAccountNoticeMail; set graduation_warning_sent_at; audit policy.graduation_warning
+      mark executed or held
+    else:
+      students = query by department / school_year
+      if empty: mark held("No accounts matched policy scope")
+      for each student: suspend or delete locally; audit
 
-    for each student:
-      perform local suspend or delete via StudentAccountLifecycleService
-      write success/failure audit event
-
-    mark policy executed or held if any failure
+Policy execution UI also exposes GET /automation/queue (pending/failed jobs, cron tasks)
+and POST /automation/queue/dispatch to manually queue evaluation jobs (policy.write).
 ```
 
 ### Suspended due-date sweep

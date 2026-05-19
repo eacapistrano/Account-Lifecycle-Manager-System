@@ -5,6 +5,7 @@ export type AuthContextValue = {
   user: AuthUser | null;
   token: string;
   isAuthenticated: boolean;
+  isBootstrapping: boolean;
   hasPermission: (slug: string) => boolean;
   login: (payload: LoginPayload) => Promise<void>;
   logout: () => Promise<void>;

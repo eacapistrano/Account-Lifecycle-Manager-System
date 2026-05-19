@@ -241,7 +241,11 @@ export function StudentDeletionWorkspace() {
         disabled={isLoading}
         onFiltersChange={(next) => {
           setPage(1);
-          setFilters(next);
+          setFilters({
+            graduation_status: next.graduation_status ?? "",
+            email: next.email ?? "",
+            search: next.search ?? "",
+          });
         }}
         onPerPageChange={(n) => {
           setPerPage(n);

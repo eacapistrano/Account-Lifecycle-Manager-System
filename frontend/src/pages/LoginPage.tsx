@@ -1,7 +1,8 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
 import { Navigate, useNavigate } from "react-router-dom";
 import { useAuth } from "../auth/useAuth";
+import { BACKEND_WEB_URL } from "../lib/backendUrl";
 
 export function LoginPage() {
   const { isAuthenticated, login } = useAuth();
@@ -9,7 +10,28 @@ export function LoginPage() {
   const [email, setEmail] = useState("admin@example.com");
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState("");
+  const [error, setError] = useState(() => {
+    return new URLSearchParams(window.location.search).get("error") ?? "";
+  });
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const oauthError = params.get("error");
+
+    if (!oauthError) {
+      return;
+    }
+
+    setError(oauthError);
+    params.delete("error");
+
+    const query = params.toString();
+    const nextUrl = query
+      ? `${window.location.pathname}?${query}`
+      : window.location.pathname;
+
+    window.history.replaceState({}, document.title, nextUrl);
+  }, []);
 
   async function onSubmit(event: FormEvent) {
     event.preventDefault();
@@ -53,8 +75,10 @@ export function LoginPage() {
         </button>
 
         <a
-            href="http://127.0.0.1:8000/auth/google/redirect"
-            className="btn btn-danger w-100"> Login with Google
+          href={`${BACKEND_WEB_URL}/auth/google/redirect`}
+          className="btn btn-danger w-100"
+        >
+          Login with Google
         </a>
 
 

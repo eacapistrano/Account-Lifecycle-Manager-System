@@ -72,4 +72,14 @@ class StudentFactory extends Factory
             'graduation_status' => 'graduated',
         ]);
     }
+
+    public function enrolledOnly(): static
+    {
+        return $this->state(fn (array $attributes): array => [
+            'graduation_status' => 'enrolled',
+            'graduation_date' => fake()->dateTimeBetween('+3 months', '+2 years')->format('Y-m-d'),
+            'graduation_warning_sent_at' => null,
+            'suspended' => false,
+        ]);
+    }
 }

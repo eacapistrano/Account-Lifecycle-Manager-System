@@ -25,29 +25,22 @@ class StudentController extends Controller
     public function index(Request $request)
     {
         $data = $request->validate([
-            'department' => ['nullable', 'string', 'max:120'],
-            'school_year' => ['nullable', 'string', 'max:40'],
+            'email' => ['nullable', 'string', 'max:200'],
+            'search' => ['nullable', 'string', 'max:200'],
             'graduation_status' => ['nullable', 'string', 'max:120'],
-            'graduated_from' => ['nullable', 'date'],
-            'graduated_to' => ['nullable', 'date', 'after_or_equal:graduated_from'],
             'per_page' => ['sometimes', 'integer', 'min:1', 'max:100'],
         ]);
 
         $q = Student::query()->orderBy('primary_email');
-        if (! empty($data['department'])) {
-            $q->where('department', $data['department']);
+        if (! empty($data['email'])) {
+            $needle = '%'.addcslashes(strtolower(trim($data['email'])), '%_\\').'%';
+            $q->whereRaw('LOWER(primary_email) LIKE ?', [$needle]);
         }
-        if (! empty($data['school_year'])) {
-            $q->where('school_year', $data['school_year']);
+        if (! empty($data['search'])) {
+            $q->searchAll($data['search']);
         }
         if (! empty($data['graduation_status'])) {
             $q->where('graduation_status', $data['graduation_status']);
-        }
-        if (! empty($data['graduated_from'])) {
-            $q->whereDate('graduation_date', '>=', $data['graduated_from']);
-        }
-        if (! empty($data['graduated_to'])) {
-            $q->whereDate('graduation_date', '<=', $data['graduated_to']);
         }
 
         return response()->json(['data' => $q->paginate($data['per_page'] ?? 50)]);

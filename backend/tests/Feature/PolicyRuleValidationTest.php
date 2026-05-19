@@ -57,6 +57,40 @@ class PolicyRuleValidationTest extends TestCase
         $response->assertCreated()->assertJsonPath('name', 'Dept only');
     }
 
+    public function test_store_accepts_student_graduation_policy(): void
+    {
+        Sanctum::actingAs(User::factory()->create());
+
+        $response = $this->postJson('/api/policies', [
+            'name' => 'Graduation',
+            'action' => 'suspend',
+            'rule_json' => [
+                'type' => 'student_graduation',
+                'suspend_after_days' => 60,
+                'warning_days_before_suspend' => 14,
+            ],
+        ]);
+
+        $response->assertCreated();
+    }
+
+    public function test_store_rejects_graduation_policy_with_delete_action(): void
+    {
+        Sanctum::actingAs(User::factory()->create());
+
+        $response = $this->postJson('/api/policies', [
+            'name' => 'Invalid graduation',
+            'action' => 'delete',
+            'rule_json' => [
+                'type' => 'student_graduation',
+                'suspend_after_days' => 60,
+                'warning_days_before_suspend' => 14,
+            ],
+        ]);
+
+        $response->assertStatus(422)->assertJsonValidationErrors(['action']);
+    }
+
     public function test_patch_rejects_clearing_scope(): void
     {
         Sanctum::actingAs(User::factory()->create());

@@ -2,10 +2,18 @@ import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { useAuth } from "../../../auth/useAuth";
 import { apiRequest } from "../../../lib/api";
+import { AutomationQueuePanel } from "./AutomationQueuePanel";
 import { PolicyEditorModal } from "./PolicyEditorModal";
 import type { PoliciesIndexResponse, PolicyNextRunResponse, PolicyRow } from "./policyTypes";
 
 function scopeLabel(ruleJson: Record<string, unknown>): string {
+  if (ruleJson.type === "student_graduation") {
+    const days = typeof ruleJson.suspend_after_days === "number" ? ruleJson.suspend_after_days : 60;
+    const warn = typeof ruleJson.warning_days_before_suspend === "number" ? ruleJson.warning_days_before_suspend : 14;
+    const status = typeof ruleJson.graduation_status === "string" ? ruleJson.graduation_status : "graduated";
+    return `Graduation · ${status} · suspend +${days}d · warn −${warn}d`;
+  }
+
   const dept = typeof ruleJson.department === "string" ? ruleJson.department : "";
   const year = typeof ruleJson.school_year === "string" ? ruleJson.school_year : "";
   const parts: string[] = [];
@@ -35,6 +43,7 @@ export function PolicyExecutionWorkspace() {
 
   const [deleteTarget, setDeleteTarget] = useState<PolicyRow | null>(null);
   const [preview, setPreview] = useState<{ title: string; payload: PolicyNextRunResponse } | null>(null);
+  const [queueRefreshToken, setQueueRefreshToken] = useState(0);
 
   const load = useCallback(async () => {
     setError("");
@@ -99,7 +108,10 @@ export function PolicyExecutionWorkspace() {
       <header className="module-page-header">
         <div>
           <h2>Policy execution</h2>
-          <p className="hint">Define scoped automation rules and review hold status from the evaluator. Changes require the policy.write permission.</p>
+          <p className="hint">
+            Define scoped or graduation lifecycle policies, monitor the automation queue, and review hold status from the evaluator.
+            Graduation policies email students before suspending accounts 60 days after graduation (configurable).
+          </p>
         </div>
         <div className="audit-actions">
           <button type="button" className="secondary" onClick={() => void load()} disabled={isLoading}>
@@ -118,6 +130,8 @@ export function PolicyExecutionWorkspace() {
 
       {error ? <p className="toast toast-error">{error}</p> : null}
 
+      <AutomationQueuePanel canDispatch={canMutate} refreshToken={queueRefreshToken} />
+
       {preview ? (
         <div className="tracker-banner">
           <strong>Next run / state: {preview.title}</strong>
@@ -125,6 +139,13 @@ export function PolicyExecutionWorkspace() {
             execution_at: {preview.payload.execution_at ? new Date(preview.payload.execution_at).toLocaleString() : "—"} · cron:{" "}
             {preview.payload.cron_expression ?? "—"} · last_status: {preview.payload.last_status} · last_evaluated_at:{" "}
             {preview.payload.last_evaluated_at ? new Date(preview.payload.last_evaluated_at).toLocaleString() : "—"}
+            {preview.payload.policy_type === "student_graduation" && preview.payload.graduation_preview ? (
+              <>
+                {" "}
+                · due warnings: {preview.payload.graduation_preview.eligible_warnings} · due suspensions:{" "}
+                {preview.payload.graduation_preview.eligible_suspensions}
+              </>
+            ) : null}
           </p>
           <button type="button" className="secondary" onClick={() => setPreview(null)}>
             Dismiss
@@ -200,7 +221,10 @@ export function PolicyExecutionWorkspace() {
         policy={editorPolicy}
         disabled={isLoading || Boolean(deleteTarget)}
         onClose={() => setEditorOpen(false)}
-        onSaved={load}
+        onSaved={async () => {
+          await load();
+          setQueueRefreshToken((current) => current + 1);
+        }}
       />
 
       {deleteTarget ? (

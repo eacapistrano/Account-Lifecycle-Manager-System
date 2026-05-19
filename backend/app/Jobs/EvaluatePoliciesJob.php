@@ -3,10 +3,9 @@
 namespace App\Jobs;
 
 use App\Models\Policy;
-use App\Models\Student;
-use App\Services\AuditLogger;
 use App\Services\AutomationNotifier;
-use App\Services\StudentAccountLifecycleService;
+use App\Services\ScopedPolicyEvaluator;
+use App\Services\StudentGraduationPolicyEvaluator;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -27,9 +26,12 @@ class EvaluatePoliciesJob implements ShouldQueue
         return [60, 300, 900];
     }
 
-    public function handle(StudentAccountLifecycleService $lifecycle, AuditLogger $audit, AutomationNotifier $notifier): void
-    {
-        Policy::query()->where('is_active', true)->get()->each(function (Policy $policy) use ($lifecycle, $audit, $notifier): void {
+    public function handle(
+        ScopedPolicyEvaluator $scopedEvaluator,
+        StudentGraduationPolicyEvaluator $graduationEvaluator,
+        AutomationNotifier $notifier,
+    ): void {
+        Policy::query()->where('is_active', true)->get()->each(function (Policy $policy) use ($scopedEvaluator, $graduationEvaluator, $notifier): void {
             $policy->last_evaluated_at = now();
 
             if ($policy->execution_at && $policy->execution_at->isFuture()) {
@@ -41,66 +43,77 @@ class EvaluatePoliciesJob implements ShouldQueue
                 return;
             }
 
-            $rules = $policy->rule_json ?? [];
-            $q = Student::query();
-            if (! empty($rules['department'])) {
-                $q->where('department', $rules['department']);
-            }
-            if (! empty($rules['school_year'])) {
-                $q->where('school_year', $rules['school_year']);
-            }
+            $policyType = $this->resolvePolicyType($policy);
 
-            $students = $q->get();
-
-            if ($students->isEmpty()) {
-                $policy->last_status = 'held';
-                $policy->hold_reason = 'No accounts matched policy scope.';
-                $policy->save();
-                $this->notifyHeld($policy, 'No accounts matched policy scope.', $notifier);
+            if ($policyType === 'student_graduation') {
+                $this->evaluateGraduationPolicy($policy, $graduationEvaluator, $notifier);
 
                 return;
             }
 
-            $failures = [];
-            foreach ($students as $student) {
-                $externalId = $student->external_account_id;
-                try {
-                    if ($policy->action === 'suspend') {
-                        $lifecycle->suspendByExternalAccountId($externalId);
-                    } else {
-                        $lifecycle->deleteByExternalAccountId($externalId);
-                    }
-
-                    $audit->record(
-                        'policy_execution',
-                        'policy.'.$policy->action,
-                        $externalId,
-                        ['policy_id' => $policy->id],
-                    );
-                } catch (\Throwable $e) {
-                    $failures[] = [
-                        'external_account_id' => $externalId,
-                        'error' => $e->getMessage(),
-                    ];
-                    $audit->record(
-                        'policy_execution',
-                        'policy.'.$policy->action,
-                        $externalId,
-                        ['policy_id' => $policy->id],
-                        false,
-                        $e->getMessage(),
-                    );
-                }
-            }
-
-            $policy->last_status = $failures === [] ? 'executed' : 'held';
-            $policy->hold_reason = $failures === [] ? null : 'One or more account operations failed.';
-            $policy->save();
-
-            if ($failures !== []) {
-                $this->notifyFailures($policy, $failures, $notifier);
-            }
+            $this->evaluateScopedPolicy($policy, $scopedEvaluator, $notifier);
         });
+    }
+
+    private function evaluateGraduationPolicy(
+        Policy $policy,
+        StudentGraduationPolicyEvaluator $evaluator,
+        AutomationNotifier $notifier,
+    ): void {
+        $result = $evaluator->evaluate($policy);
+        $failures = $result['failures'];
+
+        if ($result['warnings_sent'] === 0 && $result['suspended'] === 0 && $failures === []) {
+            $policy->last_status = 'held';
+            $policy->hold_reason = 'No graduated accounts due for warning or suspension.';
+            $policy->save();
+            $this->notifyHeld($policy, 'No graduated accounts due for warning or suspension.', $notifier);
+
+            return;
+        }
+
+        $policy->last_status = $failures === [] ? 'executed' : 'held';
+        $policy->hold_reason = $failures === []
+            ? sprintf('Warnings sent: %d. Suspended: %d.', $result['warnings_sent'], $result['suspended'])
+            : 'One or more graduation lifecycle operations failed.';
+        $policy->save();
+
+        if ($failures !== []) {
+            $this->notifyFailures($policy, $failures, $notifier);
+        }
+    }
+
+    private function evaluateScopedPolicy(
+        Policy $policy,
+        ScopedPolicyEvaluator $evaluator,
+        AutomationNotifier $notifier,
+    ): void {
+        $result = $evaluator->evaluate($policy);
+        $failures = $result['failures'];
+
+        if ($result['processed'] === 0) {
+            $policy->last_status = 'held';
+            $policy->hold_reason = 'No accounts matched policy scope.';
+            $policy->save();
+            $this->notifyHeld($policy, 'No accounts matched policy scope.', $notifier);
+
+            return;
+        }
+
+        $policy->last_status = $failures === [] ? 'executed' : 'held';
+        $policy->hold_reason = $failures === [] ? null : 'One or more account operations failed.';
+        $policy->save();
+
+        if ($failures !== []) {
+            $this->notifyFailures($policy, $failures, $notifier);
+        }
+    }
+
+    private function resolvePolicyType(Policy $policy): string
+    {
+        $type = $policy->rule_json['type'] ?? 'scope';
+
+        return is_string($type) ? $type : 'scope';
     }
 
     protected function notifyHeld(Policy $policy, string $reason, AutomationNotifier $notifier): void

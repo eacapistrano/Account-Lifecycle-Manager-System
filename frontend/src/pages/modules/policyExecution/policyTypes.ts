@@ -1,5 +1,7 @@
 import type { LaravelPaginator } from "../../../types/api";
 
+export type PolicyRuleType = "scope" | "student_graduation";
+
 export type PolicyRow = {
   id: number;
   name: string;
@@ -23,4 +25,42 @@ export type PolicyNextRunResponse = {
   cron_expression: string | null;
   last_evaluated_at: string | null;
   last_status: string;
+  policy_type?: PolicyRuleType;
+  suspend_after_days?: number;
+  warning_days_before_suspend?: number;
+  graduation_preview?: {
+    eligible_warnings: number;
+    eligible_suspensions: number;
+  };
+};
+
+export type AutomationScheduleTask = {
+  key: string;
+  name: string;
+  cron: string;
+  description: string;
+};
+
+export type AutomationQueueJobRow = {
+  id: number;
+  queue: string;
+  job_name: string;
+  attempts: number;
+  status: string;
+  available_at: string | null;
+  created_at: string | null;
+};
+
+export type AutomationQueueResponse = {
+  queue_connection: string;
+  pending_count: number;
+  failed_count: number;
+  schedules: AutomationScheduleTask[];
+  recent_pending: AutomationQueueJobRow[];
+  recent_failed: Array<{
+    id: number;
+    uuid: string;
+    queue: string;
+    failed_at: string | null;
+  }>;
 };

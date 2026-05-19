@@ -138,6 +138,42 @@ class DemoDataSeeder extends Seeder
                 'updated_at' => now(),
             ],
             [
+                'external_account_id' => 'demo_grad_warn',
+                'primary_email' => 'grad.warn@school.example',
+                'full_name' => 'Grace Warner',
+                'department' => 'Arts',
+                'school_year' => '2025',
+                'graduation_date' => now()->subDays(50)->toDateString(),
+                'graduation_status' => 'graduated',
+                'degree_program' => 'BA Music',
+                'suspended' => false,
+                'deletion_scheduled_at' => null,
+                'priority_flag' => false,
+                'compliance_notes' => 'Demo: due for graduation warning email.',
+                'raw_json' => json_encode(['kind' => 'admin#user', 'id' => 'demo_grad_warn']),
+                'last_imported_at' => $synced,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ],
+            [
+                'external_account_id' => 'demo_grad_suspend',
+                'primary_email' => 'grad.suspend@school.example',
+                'full_name' => 'Sam Pending',
+                'department' => 'Science',
+                'school_year' => '2024',
+                'graduation_date' => now()->subDays(61)->toDateString(),
+                'graduation_status' => 'graduated',
+                'degree_program' => 'BSc Biology',
+                'suspended' => false,
+                'deletion_scheduled_at' => null,
+                'priority_flag' => false,
+                'compliance_notes' => 'Demo: due for graduation suspension.',
+                'raw_json' => json_encode(['kind' => 'admin#user', 'id' => 'demo_grad_suspend']),
+                'last_imported_at' => $synced,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ],
+            [
                 'external_account_id' => 'demo_1006',
                 'primary_email' => 'james.omalley@school.example',
                 'full_name' => 'James O\'Malley',
@@ -160,10 +196,29 @@ class DemoDataSeeder extends Seeder
         if (self::EXTRA_FACTORY_STUDENTS > 0) {
             Student::factory()
                 ->count(self::EXTRA_FACTORY_STUDENTS)
+                ->enrolledOnly()
                 ->create();
         }
 
         Policy::query()->insert([
+            [
+                'name' => 'Student graduation — 60 day suspend',
+                'action' => 'suspend',
+                'rule_json' => json_encode([
+                    'type' => 'student_graduation',
+                    'graduation_status' => 'graduated',
+                    'suspend_after_days' => 60,
+                    'warning_days_before_suspend' => 14,
+                ]),
+                'execution_at' => null,
+                'cron_expression' => (string) config('automation.schedule.policy_evaluation_cron', '*/15 * * * *'),
+                'is_active' => true,
+                'last_evaluated_at' => null,
+                'last_status' => 'idle',
+                'hold_reason' => null,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ],
             [
                 'name' => 'Suspend graduated — Arts 2025',
                 'action' => 'suspend',

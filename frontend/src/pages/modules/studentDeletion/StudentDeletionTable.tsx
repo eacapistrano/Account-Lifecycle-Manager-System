@@ -51,7 +51,7 @@ export function StudentDeletionTable({ rows, selectedIds, disabled, onToggleOne,
                     disabled={disabled}
                   />
                 </td>
-                <td>{row.primary_email}</td>
+                <td className="email-cell">{row.primary_email || row.email || "—"}</td>
                 <td>{row.full_name ?? "—"}</td>
                 <td>{row.department ?? "—"}</td>
                 <td>{row.school_year ?? "—"}</td>

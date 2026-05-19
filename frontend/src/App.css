@@ -292,6 +292,48 @@ pre {
   gap: 10px;
 }
 
+.student-search-field {
+  grid-column: 1 / -1;
+}
+
+.student-search-row {
+  display: flex;
+  gap: 8px;
+  align-items: stretch;
+}
+
+.student-search-row input {
+  flex: 1;
+  min-width: 0;
+}
+
+.student-search-row button {
+  flex-shrink: 0;
+}
+
+.email-cell {
+  min-width: 200px;
+  color: var(--text);
+  word-break: break-all;
+}
+
+.automation-schedule-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 10px;
+}
+
+.automation-schedule-card {
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-elevated);
+}
+
+.policy-form-span {
+  grid-column: 1 / -1;
+}
+
 .audit-actions {
   display: flex;
   flex-wrap: wrap;

@@ -4,6 +4,8 @@ export type StudentRow = {
   id: number;
   external_account_id: string;
   primary_email: string;
+  /** API alias for primary_email (backward compatibility). */
+  email?: string;
   full_name: string | null;
   department: string | null;
   school_year: string | null;
@@ -19,19 +21,15 @@ export type StudentsIndexResponse = {
 };
 
 export type StudentFiltersState = {
-  department: string;
-  school_year: string;
   graduation_status: string;
-  graduated_from: string;
-  graduated_to: string;
+  email: string;
+  search: string;
 };
 
 export const INITIAL_STUDENT_FILTERS: StudentFiltersState = {
-  department: "",
-  school_year: "",
   graduation_status: "",
-  graduated_from: "",
-  graduated_to: "",
+  email: "",
+  search: "",
 };
 
 export type OperationTrackerPayload = {

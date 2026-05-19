@@ -3,7 +3,12 @@ import { useAuth } from "../auth/useAuth";
 import { AppLayout } from "./AppLayout";
 
 export function ProtectedApp() {
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, isBootstrapping } = useAuth();
+
+  if (isBootstrapping) {
+    return null;
+  }
+
   if (!isAuthenticated) {
     return <Navigate to="/login" replace />;
   }
