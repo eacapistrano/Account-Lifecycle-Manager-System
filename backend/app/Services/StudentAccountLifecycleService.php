@@ -3,24 +3,120 @@
 namespace App\Services;
 
 use App\Contracts\GoogleWorkspaceUserDeleter;
+use App\Contracts\GoogleWorkspaceUserSuspender;
 use App\Models\Student;
+use Illuminate\Support\Facades\Log;
 use RuntimeException;
 
 class StudentAccountLifecycleService
 {
     public function __construct(
         private GoogleWorkspaceUserDeleter $googleWorkspaceUserDeleter,
+        private GoogleWorkspaceUserSuspender $googleWorkspaceUserSuspender,
     ) {}
 
     public function suspendByExternalAccountId(string $externalAccountId): void
     {
-        $updated = Student::query()
-            ->where('external_account_id', $externalAccountId)
-            ->update(['suspended' => true]);
+        $this->setSuspendedByExternalAccountId($externalAccountId, true);
+    }
 
-        if ($updated === 0) {
+    public function unsuspendByExternalAccountId(string $externalAccountId): void
+    {
+        $this->setSuspendedByExternalAccountId($externalAccountId, false);
+    }
+public function unsuspendByPrimaryEmail(string $email): void
+{
+    $student = Student::where('primary_email', $email)
+        ->firstOrFail();
+
+    $this->googleWorkspaceUserSuspender->setSuspended($email, false);
+
+    $student->suspended = false;
+    $student->priority_flag = false;
+    $student->compliance_notes = null;
+    $student->deletion_scheduled_at = null;
+
+    $student->save();
+}
+    private function setSuspendedByExternalAccountId(string $externalAccountId, bool $suspended): void
+    {
+        Log::info('StudentAccountLifecycleService.setSuspendedByExternalAccountId called', [
+            'externalAccountId' => $externalAccountId,
+            'suspended' => $suspended,
+        ]);
+
+        $student = Student::query()
+            ->where('external_account_id', $externalAccountId)
+            ->first();
+
+        if ($student === null) {
+            Log::error('Student not found', ['externalAccountId' => $externalAccountId]);
             throw new RuntimeException('Student not found for external_account_id: '.$externalAccountId);
         }
+
+        Log::info('Found student', [
+            'externalAccountId' => $externalAccountId,
+            'email' => $student->primary_email,
+            'currentSuspendedStatus' => $student->suspended,
+        ]);
+
+        $student->suspended = $suspended;
+        $student->save();
+
+        Log::info('Updated local student record', [
+            'externalAccountId' => $externalAccountId,
+            'email' => $student->primary_email,
+            'newSuspendedStatus' => $suspended,
+        ]);
+
+        if (! config('google_workspace.suspend_enabled')) {
+            Log::info('Google Workspace suspension is disabled, skipping API call', [
+                'externalAccountId' => $externalAccountId,
+            ]);
+            return;
+        }
+
+        if (config('google_workspace.suspend_dry_run')) {
+            Log::info('Google Workspace dry-run mode enabled, skipping actual API call', [
+                'externalAccountId' => $externalAccountId,
+                'email' => $student->primary_email,
+                'wouldsuspend' => $suspended,
+            ]);
+            return;
+        }
+
+        $userKey = $this->googleWorkspaceUserKey($student);
+        Log::info('Calling Google Workspace suspend API', [
+            'externalAccountId' => $externalAccountId,
+            'email' => $student->primary_email,
+            'userKey' => $userKey,
+            'suspended' => $suspended,
+        ]);
+
+        try {
+            $this->googleWorkspaceUserSuspender->setSuspended($userKey, $suspended);
+            Log::info('Successfully called Google Workspace suspend API', [
+                'externalAccountId' => $externalAccountId,
+                'userKey' => $userKey,
+            ]);
+        } catch (\Throwable $e) {
+            Log::error('Failed to call Google Workspace suspend API', [
+                'externalAccountId' => $externalAccountId,
+                'userKey' => $userKey,
+                'errorMessage' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
+            throw $e;
+        }
+    }
+
+    private function googleWorkspaceUserKey(Student $student): string
+    {
+        if (config('google_workspace.suspend_user_key') === 'primary_email') {
+            return $student->primary_email;
+        }
+
+        return $student->primary_email; // Default to primary_email if config is invalid or not set, since external_account_id may not be unique for suspension.
     }
 
     /**

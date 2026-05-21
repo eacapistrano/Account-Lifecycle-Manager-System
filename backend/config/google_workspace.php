@@ -24,6 +24,10 @@ return [
      */
     'delete_user_key' => env('GOOGLE_WORKSPACE_DELETE_USER_KEY', 'external_account_id'),
 
+    'suspend_enabled' => (bool) env('GOOGLE_WORKSPACE_SUSPEND_ENABLED', false),
+    'suspend_dry_run' => (bool) env('GOOGLE_WORKSPACE_SUSPEND_DRY_RUN', true),
+    'suspend_user_key' => env('GOOGLE_WORKSPACE_SUSPEND_USER_KEY', 'external_account_id'),
+
     /*
      * Comma-separated OAuth scopes authorized for the service account Client ID
      * under Domain-wide delegation. Default: admin.directory.user

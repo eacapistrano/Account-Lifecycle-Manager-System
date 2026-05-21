@@ -72,6 +72,7 @@ Route::middleware(['auth:sanctum', 'throttle:api', 'audit.append'])->group(funct
 
     Route::middleware(['permission:student.bulk_suspend', 'throttle:sensitive'])->group(function (): void {
         Route::post('/students/suspend', [StudentController::class, 'suspend']);
+        Route::post('/students/unsuspend', [StudentController::class, 'unsuspend']);
     });
 
     Route::middleware(['permission:student.bulk_delete', 'throttle:sensitive'])->group(function (): void {

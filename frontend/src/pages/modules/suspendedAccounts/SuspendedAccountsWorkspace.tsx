@@ -235,6 +235,31 @@ export function SuspendedAccountsWorkspace() {
                       ) : (
                         <span className="hint-inline">—</span>
                       )}
+                      {hasPermission("student.bulk_suspend") ? (
+                        <button
+                          type="button"
+                          className="primary slim-button"
+                          onClick={async () => {
+                            if (!confirm(`Unsuspend ${row.primary_email}?`)) return;
+                            setError("");
+                            setInfo("");
+                            try {
+                              const payload = { account_ids: [row.external_account_id] };
+                              await apiRequest(`/students/unsuspend`, {
+                                method: "POST",
+                                body: JSON.stringify(payload),
+                              });
+                              setInfo(`Unsuspended ${row.primary_email}.`);
+                              await load();
+                            } catch (e) {
+                              setError(e instanceof Error ? e.message : "Unsuspend failed.");
+                            }
+                          }}
+                          disabled={isLoading}
+                        >
+                          Unsuspend
+                        </button>
+                      ) : null}
                     </td>
                   </tr>
                 );

@@ -8,6 +8,7 @@ use App\Jobs\ProcessBulkAccountActionJob;
 use App\Models\AuditEvent;
 use App\Models\BulkActionOperation;
 use App\Models\Student;
+use App\Services\StudentAccountLifecycleService;
 use App\Services\AuditLogger;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
@@ -112,6 +113,53 @@ class StudentController extends Controller
             'operation_id' => $operationId,
         ], 202);
     }
+
+   public function unsuspend(Request $request, StudentAccountLifecycleService $lifecycle)
+{
+    $max = (int) config('security.bulk_account_ids_max', 500);
+
+    $data = $request->validate([
+        'account_ids' => ['sometimes', 'array', 'max:'.$max],
+        'account_ids.*' => ['required_with:account_ids', 'string', 'max:255'],
+        'google_ids' => ['sometimes', 'array', 'max:'.$max],
+        'google_ids.*' => ['required_with:google_ids', 'string', 'max:255'],
+    ]);
+
+    $ids = $data['account_ids'] ?? $data['google_ids'] ?? [];
+
+    if ($ids === []) {
+        throw ValidationException::withMessages([
+            'account_ids' => ['The account ids field is required.'],
+        ]);
+    }
+
+    $failures = [];
+
+    foreach ($ids as $accountId) {
+        try {
+            $student = \App\Models\Student::where('external_account_id', $accountId)
+                ->orWhere('primary_email', $accountId)
+                ->firstOrFail();
+
+            $lifecycle->unsuspendByPrimaryEmail($student->primary_email);
+
+        } catch (\Throwable $e) {
+            $failures[] = [
+                'account_id' => $accountId,
+                'error' => $e->getMessage(),
+            ];
+        }
+    }
+
+    return response()->json([
+        'queued' => false,
+        'action' => 'unsuspend',
+        'count' => count($ids),
+        'ok' => count($ids) - count($failures),
+        'failed' => count($failures),
+        'failures' => $failures,
+    ], 200);
+}
 
     public function delete(Request $request)
     {

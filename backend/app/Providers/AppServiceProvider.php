@@ -3,8 +3,11 @@
 namespace App\Providers;
 
 use App\Contracts\GoogleWorkspaceUserDeleter;
+use App\Contracts\GoogleWorkspaceUserSuspender;
 use App\Services\GoogleWorkspaceDirectoryUserDeleter;
+use App\Services\GoogleWorkspaceDirectoryUserSuspender;
 use App\Services\NullGoogleWorkspaceUserDeleter;
+use App\Services\NullGoogleWorkspaceUserSuspender;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\RateLimiter;
@@ -27,6 +30,21 @@ class AppServiceProvider extends ServiceProvider
             $scopes = config('google_workspace.scopes');
 
             return new GoogleWorkspaceDirectoryUserDeleter(
+                credentialsPath: (string) config('google_workspace.credentials_path'),
+                impersonateEmail: (string) config('google_workspace.impersonate_email'),
+                scopes: $scopes,
+            );
+        });
+
+        $this->app->singleton(GoogleWorkspaceUserSuspender::class, function (): GoogleWorkspaceUserSuspender {
+            if (! config('google_workspace.suspend_enabled')) {
+                return new NullGoogleWorkspaceUserSuspender;
+            }
+
+            /** @var array<int, string> $scopes */
+            $scopes = config('google_workspace.scopes');
+
+            return new GoogleWorkspaceDirectoryUserSuspender(
                 credentialsPath: (string) config('google_workspace.credentials_path'),
                 impersonateEmail: (string) config('google_workspace.impersonate_email'),
                 scopes: $scopes,
