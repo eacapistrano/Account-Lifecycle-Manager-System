@@ -5,6 +5,7 @@ import { LoginPage } from "./pages/LoginPage";
 import { AccessControlPage } from "./pages/modules/AccessControlPage";
 import { AuditLogsShellPage } from "./pages/modules/AuditLogsShellPage";
 import { PolicyExecutionShellPage } from "./pages/modules/PolicyExecutionShellPage";
+import { StudentDeletionHistoryPage } from "./pages/modules/StudentDeletionHistoryPage";
 import { StudentDeletionShellPage } from "./pages/modules/StudentDeletionShellPage";
 import { SuspendedAccountsShellPage } from "./pages/modules/SuspendedAccountsShellPage";
 
@@ -20,6 +21,7 @@ export const appRouter = createBrowserRouter([
       { index: true, element: <Navigate to="/dashboard" replace /> },
       { path: "dashboard", element: <DashboardPage /> },
       { path: "student-deletion", element: <StudentDeletionShellPage /> },
+      { path: "student-deletion/history", element: <StudentDeletionHistoryPage /> },
       { path: "policy-execution", element: <PolicyExecutionShellPage /> },
       { path: "suspended-accounts", element: <SuspendedAccountsShellPage /> },
       { path: "audit-logs", element: <AuditLogsShellPage /> },

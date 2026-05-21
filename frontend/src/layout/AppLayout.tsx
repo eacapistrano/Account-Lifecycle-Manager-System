@@ -9,8 +9,9 @@ export function AppLayout() {
     hasPermission("roles.view") || hasPermission("roles.manage") || hasPermission("users.manage");
 
   const links = [
-    { to: "/dashboard", label: "Dashboard" },
-    { to: "/student-deletion", label: "Student deletion" },
+    { to: "/dashboard", label: "Dashboard", end: true },
+    { to: "/student-deletion", label: "Student deletion", end: true },
+    { to: "/student-deletion/history", label: "Deletion history" },
     { to: "/policy-execution", label: "Policy execution" },
     { to: "/suspended-accounts", label: "Suspended accounts" },
     { to: "/audit-logs", label: "Audit logs" },
@@ -31,7 +32,7 @@ export function AppLayout() {
         </div>
         <nav className="nav-links">
           {links.map((link) => (
-            <NavLink key={link.to} to={link.to} className={({ isActive }) => (isActive ? "active" : "")} end={link.to === "/dashboard"}>
+            <NavLink key={link.to} to={link.to} className={({ isActive }) => (isActive ? "active" : "")} end={link.end}>
               {link.label}
             </NavLink>
           ))}

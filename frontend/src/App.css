@@ -380,6 +380,53 @@ pre {
   border-bottom: none;
 }
 
+.status-pill {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  padding: 2px 8px;
+  border: 1px solid var(--border-strong);
+  border-radius: 999px;
+  color: var(--text-muted);
+  background: var(--surface);
+  font-size: 0.78rem;
+  font-weight: 600;
+}
+
+.status-pill-completed {
+  color: var(--success);
+  background: rgba(52, 211, 153, 0.1);
+  border-color: rgba(52, 211, 153, 0.25);
+}
+
+.status-pill-failed {
+  color: var(--danger);
+  background: var(--danger-muted);
+  border-color: rgba(248, 113, 113, 0.25);
+}
+
+.status-pill-running,
+.status-pill-queued {
+  color: var(--accent);
+  background: var(--accent-muted);
+  border-color: rgba(59, 130, 246, 0.25);
+}
+
+.mono-cell {
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  font-size: 0.78rem;
+  color: var(--text-muted);
+}
+
+.operation-failures-cell {
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.operation-failures {
+  display: grid;
+  gap: 10px;
+}
+
 .toast-stack {
   display: flex;
   flex-direction: column;

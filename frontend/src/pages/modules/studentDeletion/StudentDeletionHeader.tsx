@@ -1,3 +1,5 @@
+import { Link } from "react-router-dom";
+
 type Props = {
   latestImportHint: string;
   isLoading: boolean;
@@ -24,6 +26,9 @@ export function StudentDeletionHeader({ latestImportHint, isLoading, canImport, 
         <button type="button" className="secondary" onClick={onResetFilters} disabled={isLoading}>
           Reset filters
         </button>
+        <Link className="hint-inline dashboard-link" to="/student-deletion/history">
+          Deletion history
+        </Link>
         {canImport ? (
           <button type="button" onClick={onImport} disabled={isLoading}>
             Queue import
