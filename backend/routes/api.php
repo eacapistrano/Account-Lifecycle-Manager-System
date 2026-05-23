@@ -29,6 +29,10 @@ Route::middleware(['auth:sanctum', 'throttle:api', 'audit.append'])->group(funct
 
     Route::get('/students', [StudentController::class, 'index']);
     Route::get('/students/actions', [StudentController::class, 'operationHistory']);
+    Route::middleware(['permission:audit.export', 'throttle:sensitive'])->group(function (): void {
+        Route::get('/students/actions/export/csv', [StudentController::class, 'operationHistoryExportCsv']);
+        Route::get('/students/actions/export/pdf', [StudentController::class, 'operationHistoryExportPdf']);
+    });
     Route::get('/students/actions/{operationId}/failures', [StudentController::class, 'operationFailures']);
     Route::get('/students/actions/{operationId}', [StudentController::class, 'operationStatus']);
 

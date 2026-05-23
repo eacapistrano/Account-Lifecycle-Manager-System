@@ -3,6 +3,7 @@
 namespace App\Jobs;
 
 use App\Models\BulkActionOperation;
+use App\Models\Student;
 use App\Models\User;
 use App\Services\AuditLogger;
 use App\Services\StudentAccountLifecycleService;
@@ -43,6 +44,7 @@ class ProcessBulkAccountActionJob implements ShouldQueue
 
         foreach ($this->accountIds as $externalAccountId) {
             $successful = false;
+            $studentSnapshot = $this->studentSnapshotForBulkIdentifier($externalAccountId);
             try {
                 if ($this->action === 'suspend') {
                     $lifecycle->suspendByExternalAccountId($externalAccountId);
@@ -58,6 +60,7 @@ class ProcessBulkAccountActionJob implements ShouldQueue
                     $externalAccountId,
                     [
                         'external_account_id' => $externalAccountId,
+                        ...$studentSnapshot,
                         'operation_id' => $this->operationId,
                         'queued' => true,
                         'job_class' => self::class,
@@ -74,6 +77,7 @@ class ProcessBulkAccountActionJob implements ShouldQueue
                     $externalAccountId,
                     [
                         'external_account_id' => $externalAccountId,
+                        ...$studentSnapshot,
                         'operation_id' => $this->operationId,
                         'queued' => true,
                         'job_class' => self::class,
@@ -173,5 +177,26 @@ class ProcessBulkAccountActionJob implements ShouldQueue
         BulkActionOperation::query()
             ->where('operation_id', $this->operationId)
             ->update($changes);
+    }
+
+    /**
+     * @return array{primary_email?: string, student_id?: int, resolved_external_account_id?: string}
+     */
+    private function studentSnapshotForBulkIdentifier(string $bulkAccountIdentifier): array
+    {
+        $student = Student::query()
+            ->where('external_account_id', $bulkAccountIdentifier)
+            ->orWhere('primary_email', $bulkAccountIdentifier)
+            ->first();
+
+        if ($student === null) {
+            return [];
+        }
+
+        return [
+            'primary_email' => $student->primary_email,
+            'student_id' => $student->id,
+            'resolved_external_account_id' => $student->external_account_id,
+        ];
     }
 }

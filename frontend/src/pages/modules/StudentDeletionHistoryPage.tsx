@@ -1,6 +1,6 @@
 import { Fragment, useCallback, useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
-import { apiRequest } from "../../lib/api";
+import { apiRequest, buildApiUrl, createApiHeaders, parseApiErrorMessage } from "../../lib/api";
 import type { BulkHistoryResponse, BulkHistoryRow } from "./studentDeletion/studentDeletionTypes";
 
 type Filters = {
@@ -62,6 +62,22 @@ function buildQuery(filters: Filters, page: number, perPage: number): string {
   return query.toString();
 }
 
+function buildExportQuery(filters: Filters): string {
+  const query = new URLSearchParams();
+
+  if (filters.status) {
+    query.set("status", filters.status);
+  }
+  if (filters.from) {
+    query.set("from", filters.from);
+  }
+  if (filters.to) {
+    query.set("to", filters.to);
+  }
+
+  return query.toString();
+}
+
 export function StudentDeletionHistoryPage() {
   const [filters, setFilters] = useState<Filters>(INITIAL_FILTERS);
   const [page, setPage] = useState(1);
@@ -72,6 +88,7 @@ export function StudentDeletionHistoryPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState("");
   const [info, setInfo] = useState("");
+  const [exporting, setExporting] = useState<"csv" | "pdf" | null>(null);
   const [failureRows, setFailureRows] = useState<Record<string, FailureRow[]>>({});
   const [failureLoadingId, setFailureLoadingId] = useState<string | null>(null);
   const latestRequestRef = useRef(0);
@@ -144,6 +161,36 @@ export function StudentDeletionHistoryPage() {
     }
   }
 
+  async function handleExport(kind: "csv" | "pdf") {
+    setError("");
+    setInfo("");
+    setExporting(kind);
+
+    try {
+      const query = buildExportQuery(filters);
+      const response = await fetch(buildApiUrl(`/students/actions/export/${kind}${query ? `?${query}` : ""}`), {
+        headers: createApiHeaders(),
+      });
+
+      if (!response.ok) {
+        throw new Error(parseApiErrorMessage(response.status, await response.text()));
+      }
+
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `student-deletion-history.${kind}`;
+      link.click();
+      URL.revokeObjectURL(url);
+      setInfo(`Deletion history ${kind.toUpperCase()} export downloaded.`);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : `Failed to export deletion history ${kind.toUpperCase()}.`);
+    } finally {
+      setExporting(null);
+    }
+  }
+
   return (
     <section className="card stack module-page">
       <header className="module-page-header">
@@ -154,6 +201,12 @@ export function StudentDeletionHistoryPage() {
         <div className="audit-actions">
           <button type="button" className="secondary" onClick={() => void load()} disabled={isLoading}>
             {isLoading ? "Loading..." : "Refresh"}
+          </button>
+          <button type="button" className="secondary" onClick={() => void handleExport("csv")} disabled={isLoading || exporting !== null}>
+            {exporting === "csv" ? "Exporting..." : "Export CSV"}
+          </button>
+          <button type="button" className="secondary" onClick={() => void handleExport("pdf")} disabled={isLoading || exporting !== null}>
+            {exporting === "pdf" ? "Exporting..." : "Export PDF"}
           </button>
           <Link className="hint-inline dashboard-link" to="/student-deletion">
             Back to deletion

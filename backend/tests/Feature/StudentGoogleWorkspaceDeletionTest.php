@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Contracts\GoogleWorkspaceUserDeleter;
 use App\Jobs\ProcessBulkAccountActionJob;
+use App\Models\AuditEvent;
 use App\Models\BulkActionOperation;
 use App\Models\Student;
 use App\Services\AuditLogger;
@@ -18,6 +19,13 @@ use Tests\TestCase;
 class StudentGoogleWorkspaceDeletionTest extends TestCase
 {
     use RefreshDatabase;
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        config(['google_workspace.delete_user_key' => 'external_account_id']);
+    }
 
     public function test_delete_removes_student_after_workspace_deleter_succeeds(): void
     {
@@ -112,7 +120,10 @@ class StudentGoogleWorkspaceDeletionTest extends TestCase
 
     public function test_bulk_delete_job_deletes_multiple_workspace_users(): void
     {
-        config(['google_workspace.delete_enabled' => true]);
+        config([
+            'google_workspace.delete_enabled' => true,
+            'google_workspace.delete_user_key' => 'external_account_id',
+        ]);
 
         $keys = [];
         $mock = Mockery::mock(GoogleWorkspaceUserDeleter::class);
@@ -157,6 +168,18 @@ class StudentGoogleWorkspaceDeletionTest extends TestCase
         $this->assertEquals(['bulk-a', 'bulk-b'], $keys);
         $this->assertDatabaseMissing('students', ['id' => $s1->id]);
         $this->assertDatabaseMissing('students', ['id' => $s2->id]);
+        $this->assertDatabaseHas('audit_events', [
+            'module' => 'student_deletion',
+            'action' => 'student.delete',
+            'target_account_id' => 'bulk-a',
+        ]);
+        $this->assertSame(
+            $s1->primary_email,
+            AuditEvent::query()
+                ->where('target_account_id', 'bulk-a')
+                ->firstOrFail()
+                ->payload['primary_email']
+        );
     }
 
     public function test_delete_dry_run_skips_workspace_and_preserves_student(): void

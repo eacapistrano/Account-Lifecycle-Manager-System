@@ -8,12 +8,15 @@ use App\Jobs\ProcessBulkAccountActionJob;
 use App\Models\AuditEvent;
 use App\Models\BulkActionOperation;
 use App\Models\Student;
-use App\Services\StudentAccountLifecycleService;
 use App\Services\AuditLogger;
+use App\Services\StudentAccountLifecycleService;
+use Barryvdh\DomPDF\Facade\Pdf;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class StudentController extends Controller
 {
@@ -114,52 +117,52 @@ class StudentController extends Controller
         ], 202);
     }
 
-   public function unsuspend(Request $request, StudentAccountLifecycleService $lifecycle)
-{
-    $max = (int) config('security.bulk_account_ids_max', 500);
+    public function unsuspend(Request $request, StudentAccountLifecycleService $lifecycle)
+    {
+        $max = (int) config('security.bulk_account_ids_max', 500);
 
-    $data = $request->validate([
-        'account_ids' => ['sometimes', 'array', 'max:'.$max],
-        'account_ids.*' => ['required_with:account_ids', 'string', 'max:255'],
-        'google_ids' => ['sometimes', 'array', 'max:'.$max],
-        'google_ids.*' => ['required_with:google_ids', 'string', 'max:255'],
-    ]);
-
-    $ids = $data['account_ids'] ?? $data['google_ids'] ?? [];
-
-    if ($ids === []) {
-        throw ValidationException::withMessages([
-            'account_ids' => ['The account ids field is required.'],
+        $data = $request->validate([
+            'account_ids' => ['sometimes', 'array', 'max:'.$max],
+            'account_ids.*' => ['required_with:account_ids', 'string', 'max:255'],
+            'google_ids' => ['sometimes', 'array', 'max:'.$max],
+            'google_ids.*' => ['required_with:google_ids', 'string', 'max:255'],
         ]);
-    }
 
-    $failures = [];
+        $ids = $data['account_ids'] ?? $data['google_ids'] ?? [];
 
-    foreach ($ids as $accountId) {
-        try {
-            $student = \App\Models\Student::where('external_account_id', $accountId)
-                ->orWhere('primary_email', $accountId)
-                ->firstOrFail();
-
-            $lifecycle->unsuspendByPrimaryEmail($student->primary_email);
-
-        } catch (\Throwable $e) {
-            $failures[] = [
-                'account_id' => $accountId,
-                'error' => $e->getMessage(),
-            ];
+        if ($ids === []) {
+            throw ValidationException::withMessages([
+                'account_ids' => ['The account ids field is required.'],
+            ]);
         }
-    }
 
-    return response()->json([
-        'queued' => false,
-        'action' => 'unsuspend',
-        'count' => count($ids),
-        'ok' => count($ids) - count($failures),
-        'failed' => count($failures),
-        'failures' => $failures,
-    ], 200);
-}
+        $failures = [];
+
+        foreach ($ids as $accountId) {
+            try {
+                $student = Student::where('external_account_id', $accountId)
+                    ->orWhere('primary_email', $accountId)
+                    ->firstOrFail();
+
+                $lifecycle->unsuspendByPrimaryEmail($student->primary_email);
+
+            } catch (\Throwable $e) {
+                $failures[] = [
+                    'account_id' => $accountId,
+                    'error' => $e->getMessage(),
+                ];
+            }
+        }
+
+        return response()->json([
+            'queued' => false,
+            'action' => 'unsuspend',
+            'count' => count($ids),
+            'ok' => count($ids) - count($failures),
+            'failed' => count($failures),
+            'failures' => $failures,
+        ], 200);
+    }
 
     public function delete(Request $request)
     {
@@ -271,6 +274,56 @@ class StudentController extends Controller
         return response()->json(['data' => $history]);
     }
 
+    public function operationHistoryExportCsv(Request $request): StreamedResponse
+    {
+        $data = $request->validate([
+            'status' => ['sometimes', 'in:queued,running,completed,failed'],
+            'from' => ['sometimes', 'date'],
+            'to' => ['sometimes', 'date'],
+        ]);
+
+        $query = $this->successfulDeletionEventsQuery($data);
+        $filename = 'student-deletion-history-'.now()->format('Ymd-His').'.csv';
+
+        return response()->streamDownload(function () use ($query): void {
+            $out = fopen('php://output', 'w');
+            fputcsv($out, ['email', 'deleted_at']);
+            $query->chunk(500, function ($rows) use ($out): void {
+                foreach ($rows as $row) {
+                    fputcsv($out, [
+                        $this->deletedEmailFromAuditEvent($row),
+                        $row->created_at?->toIso8601String(),
+                    ]);
+                }
+            });
+            fclose($out);
+        }, $filename, [
+            'Content-Type' => 'text/csv; charset=UTF-8',
+        ]);
+    }
+
+    public function operationHistoryExportPdf(Request $request)
+    {
+        $data = $request->validate([
+            'status' => ['sometimes', 'in:queued,running,completed,failed'],
+            'from' => ['sometimes', 'date'],
+            'to' => ['sometimes', 'date'],
+            'limit' => ['sometimes', 'integer', 'min:1', 'max:1000'],
+        ]);
+
+        $events = $this->successfulDeletionEventsQuery($data)
+            ->limit((int) ($data['limit'] ?? 500))
+            ->get()
+            ->map(fn (AuditEvent $event): array => [
+                'email' => $this->deletedEmailFromAuditEvent($event),
+                'deleted_at' => $event->created_at?->toIso8601String(),
+            ]);
+
+        $pdf = Pdf::loadView('students.deletion-history-pdf', ['events' => $events]);
+
+        return $pdf->download('student-deletion-history-'.now()->format('Ymd-His').'.pdf');
+    }
+
     public function operationFailures(string $operationId, Request $request)
     {
         $request->validate([
@@ -371,5 +424,58 @@ class StudentController extends Controller
             'completed_at' => $operation->completed_at?->toIso8601String(),
             'error' => $operation->error,
         ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $filters
+     */
+    private function successfulDeletionEventsQuery(array $filters): Builder
+    {
+        $operationIds = $this->filteredBulkOperationQuery($filters)
+            ->pluck('operation_id');
+
+        return AuditEvent::query()
+            ->where('module', 'student_deletion')
+            ->where('action', 'student.delete')
+            ->where('success', true)
+            ->whereIn('payload->operation_id', $operationIds)
+            ->orderByDesc('created_at')
+            ->orderByDesc('id');
+    }
+
+    /**
+     * @param  array<string, mixed>  $filters
+     */
+    private function filteredBulkOperationQuery(array $filters): Builder
+    {
+        $query = BulkActionOperation::query()
+            ->where('action', 'delete');
+
+        if (! empty($filters['status'])) {
+            $query->where('status', $filters['status']);
+        }
+        if (! empty($filters['from'])) {
+            $query->whereDate('requested_at', '>=', $filters['from']);
+        }
+        if (! empty($filters['to'])) {
+            $query->whereDate('requested_at', '<=', $filters['to']);
+        }
+
+        return $query;
+    }
+
+    private function deletedEmailFromAuditEvent(AuditEvent $event): string
+    {
+        $payload = $event->payload ?? [];
+
+        if (is_string($payload['primary_email'] ?? null) && $payload['primary_email'] !== '') {
+            return $payload['primary_email'];
+        }
+
+        if (is_string($payload['email'] ?? null) && $payload['email'] !== '') {
+            return $payload['email'];
+        }
+
+        return $event->target_account_id ?? '';
     }
 }

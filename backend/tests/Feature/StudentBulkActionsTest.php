@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Jobs\ProcessBulkAccountActionJob;
+use App\Models\AuditEvent;
 use App\Models\BulkActionOperation;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -111,5 +112,63 @@ class StudentBulkActionsTest extends TestCase
             ->assertStatus(202)
             ->assertJsonPath('dry_run', true)
             ->assertJsonPath('count', 2);
+    }
+
+    public function test_deletion_history_csv_export_lists_deleted_emails_and_dates(): void
+    {
+        $admin = User::factory()->create();
+        Sanctum::actingAs($admin);
+
+        $requestedAt = now()->subHour();
+        $deletedAt = now()->subMinutes(30);
+        $operation = BulkActionOperation::query()->create([
+            'operation_id' => '11111111-1111-1111-1111-111111111111',
+            'action' => 'delete',
+            'status' => 'completed',
+            'total' => 1,
+            'processed' => 1,
+            'ok' => 1,
+            'failed' => 0,
+            'actor_user_id' => $admin->id,
+            'requested_at' => $requestedAt,
+            'completed_at' => $deletedAt,
+        ]);
+
+        AuditEvent::query()->create([
+            'actor_user_id' => $admin->id,
+            'module' => 'student_deletion',
+            'action' => 'student.delete',
+            'target_account_id' => 'student-a',
+            'payload' => [
+                'operation_id' => $operation->operation_id,
+                'primary_email' => 'deleted.student@example.edu',
+            ],
+            'success' => true,
+            'created_at' => $deletedAt,
+            'updated_at' => $deletedAt,
+        ]);
+
+        AuditEvent::query()->create([
+            'actor_user_id' => $admin->id,
+            'module' => 'student_deletion',
+            'action' => 'student.delete',
+            'target_account_id' => 'student-b',
+            'payload' => [
+                'operation_id' => '22222222-2222-2222-2222-222222222222',
+                'primary_email' => 'not-in-export@example.edu',
+            ],
+            'success' => true,
+        ]);
+
+        $response = $this->get('/api/students/actions/export/csv?status=completed&from='.$requestedAt->toDateString().'&to='.$requestedAt->toDateString());
+
+        $response->assertOk();
+        $this->assertStringContainsString('text/csv', (string) $response->headers->get('content-type'));
+
+        $content = $response->streamedContent();
+        $this->assertStringContainsString('email,deleted_at', $content);
+        $this->assertStringContainsString('deleted.student@example.edu', $content);
+        $this->assertMatchesRegularExpression('/deleted\.student@example\.edu,\d{4}-\d{2}-\d{2}T/', $content);
+        $this->assertStringNotContainsString('not-in-export@example.edu', $content);
     }
 }
