@@ -32,15 +32,7 @@ export function StudentDeletionFiltersBar({
 
   return (
     <div className="audit-filters student-filters">
-      <label>
-        Email
-        <input
-          value={filters.email}
-          onChange={(ev) => patchEmail(ev.target.value)}
-          placeholder="ava.chen@school.example"
-          disabled={disabled}
-        />
-      </label>
+
       <label className="student-search-field">
         Search all columns
         <div className="student-search-row">
