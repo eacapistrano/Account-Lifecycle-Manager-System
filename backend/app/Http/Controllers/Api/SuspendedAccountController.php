@@ -13,6 +13,7 @@ class SuspendedAccountController extends Controller
         $data = $request->validate([
             'priority_only' => ['sometimes', 'boolean'],
             'per_page' => ['sometimes', 'integer', 'min:1', 'max:100'],
+            'search' => ['sometimes', 'string', 'max:255'],
         ]);
 
         $q = Student::query()
@@ -22,6 +23,17 @@ class SuspendedAccountController extends Controller
 
         if (! empty($data['priority_only'])) {
             $q->where('priority_flag', true);
+        }
+
+        if (! empty($data['search'])) {
+            $term = '%' . $data['search'] . '%';
+            $q->where(function ($sub) use ($term) {
+                $sub->where('primary_email', 'like', $term)
+                    ->orWhere('full_name', 'like', $term)
+                    ->orWhere('department', 'like', $term)
+                    ->orWhere('school_year', 'like', $term)
+                    ->orWhere('compliance_notes', 'like', $term);
+            });
         }
 
         return response()->json(['data' => $q->paginate($data['per_page'] ?? 50)]);

@@ -43,6 +43,7 @@ export function SuspendedAccountsWorkspace() {
   const canEdit = hasPermission("suspended.priority");
 
   const [priorityOnly, setPriorityOnly] = useState(false);
+  const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
   const [perPage] = useState(50);
   const [rows, setRows] = useState<SuspendedStudentRow[]>([]);
@@ -66,6 +67,9 @@ export function SuspendedAccountsWorkspace() {
       if (priorityOnly) {
         query.set("priority_only", "1");
       }
+      if (search.trim()) {
+        query.set("search", search.trim());
+      }
       const payload = await apiRequest<SuspendedIndexResponse>(`/suspended-accounts?${query.toString()}`);
       setRows(payload.data.data);
       setDrafts(draftsFromRows(payload.data.data));
@@ -86,7 +90,7 @@ export function SuspendedAccountsWorkspace() {
 
   useEffect(() => {
     setPage(1);
-  }, [priorityOnly]);
+  }, [priorityOnly, search]);
 
   function patchDraft(id: number, patch: Partial<DraftRow>) {
     setDrafts((current) => {
@@ -147,6 +151,23 @@ export function SuspendedAccountsWorkspace() {
           </p>
         </div>
         <div className="audit-actions">
+          <div className="search-bar">
+            <input
+              type="text"
+              placeholder="Search all columns..."
+              value={search}
+              onChange={(ev) => setSearch(ev.target.value)}
+              className="search-input"
+            />
+            <button
+              type="button"
+              className="primary"
+              onClick={() => void load()}
+              disabled={isLoading}
+            >
+              Search
+            </button>
+          </div>
           <button type="button" className="secondary" onClick={() => void load()} disabled={isLoading}>
             {isLoading ? "Loading…" : "Refresh"}
           </button>
@@ -174,7 +195,6 @@ export function SuspendedAccountsWorkspace() {
             <tr>
               <th>Email</th>
               <th>Name</th>
-              <th>Dept / year</th>
               <th>Deletion due</th>
               <th>Priority</th>
               <th>Compliance notes</th>
@@ -195,9 +215,6 @@ export function SuspendedAccountsWorkspace() {
                   <tr key={row.id}>
                     <td>{row.primary_email}</td>
                     <td>{row.full_name ?? "—"}</td>
-                    <td>
-                      {row.department ?? "—"} · {row.school_year ?? "—"}
-                    </td>
                     <td>
                       <input
                         type="date"

@@ -1,1 +1,5 @@
 *.sqlite*
+
+# Database backups
+*.sql
+backend/storage/db-recovery-*/

@@ -1,10 +1,14 @@
-import { useCallback, useEffect, useState } from "react";
-import { Link } from "react-router-dom";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useAuth } from "../../../auth/useAuth";
 import { apiRequest } from "../../../lib/api";
 import { AutomationQueuePanel } from "./AutomationQueuePanel";
 import { PolicyEditorModal } from "./PolicyEditorModal";
-import type { PoliciesIndexResponse, PolicyNextRunResponse, PolicyRow } from "./policyTypes";
+import type {
+  AutomationQueueResponse,
+  PoliciesIndexResponse,
+  PolicyNextRunResponse,
+  PolicyRow,
+} from "./policyTypes";
 
 function scopeLabel(ruleJson: Record<string, unknown>): string {
   if (ruleJson.type === "student_graduation") {
@@ -43,6 +47,8 @@ export function PolicyExecutionWorkspace() {
 
   const [deleteTarget, setDeleteTarget] = useState<PolicyRow | null>(null);
   const [preview, setPreview] = useState<{ title: string; payload: PolicyNextRunResponse } | null>(null);
+  const [queueData, setQueueData] = useState<AutomationQueueResponse | null>(null);
+  const [isDispatching, setIsDispatching] = useState(false);
   const [queueRefreshToken, setQueueRefreshToken] = useState(0);
 
   const load = useCallback(async () => {
@@ -65,6 +71,35 @@ export function PolicyExecutionWorkspace() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  const loadQueue = useCallback(async () => {
+    try {
+      const payload = await apiRequest<AutomationQueueResponse>("/automation/queue");
+      setQueueData(payload);
+    } catch {
+      setQueueData(null);
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadQueue();
+  }, [loadQueue, queueRefreshToken]);
+
+  async function handleRunAllPolicies() {
+    setError("");
+    setIsDispatching(true);
+    try {
+      await apiRequest("/automation/queue/dispatch", {
+        method: "POST",
+        body: JSON.stringify({ task: "policy_evaluation" }),
+      });
+      setQueueRefreshToken((current) => current + 1);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to run policies now.");
+    } finally {
+      setIsDispatching(false);
+    }
+  }
 
   async function handleNextRun(policy: PolicyRow) {
     setError("");
@@ -103,32 +138,135 @@ export function PolicyExecutionWorkspace() {
     setEditorOpen(true);
   }
 
+  const nextPolicySchedule = queueData?.schedules.find((task) => task.key === "policy_evaluation");
+  const nextExecutionLabel = nextPolicySchedule ? `Next run window: ${nextPolicySchedule.name}` : "Next automation window";
+  const scheduleHint = nextPolicySchedule
+    ? `${nextPolicySchedule.cron} · ${nextPolicySchedule.description}`
+    : "Scheduled policy evaluation is not configured.";
+
+  const policyCards = useMemo(
+    () =>
+      rows.map((row) => {
+        const isGraduation = row.rule_json.type === "student_graduation";
+        const suspendDays = typeof row.rule_json.suspend_after_days === "number" ? row.rule_json.suspend_after_days : 0;
+        const deleteDays = typeof row.rule_json.permanent_delete_after_days === "number" ? row.rule_json.permanent_delete_after_days : 0;
+        const warningDays = typeof row.rule_json.warning_days_before_suspend === "number" ? row.rule_json.warning_days_before_suspend : 0;
+        const retentionDays = typeof row.rule_json.data_retention_days === "number" ? row.rule_json.data_retention_days : 60;
+        const immediateFlag = row.rule_json.immediate === true;
+
+        return (
+          <article key={row.id} className="policy-target-card">
+            <div className="policy-card-header">
+              <div className="policy-card-title-group">
+                <h3>{row.name}</h3>
+                <p className="hint">{scopeLabel(row.rule_json)}</p>
+              </div>
+              <div className="policy-card-state">
+                <span className={`status-pill ${row.is_active ? "status-pill-running" : "status-pill-failed"}`}>
+                  {row.is_active ? "Active" : "Inactive"}
+                </span>
+              </div>
+            </div>
+
+            <div className="policy-card-body">
+              <div className="policy-card-grid">
+                <div className="policy-card-detail">
+                  <p className="policy-card-label">{isGraduation ? "Suspension Phase" : "Immediate Suspension"}</p>
+                  <strong>{isGraduation ? `${suspendDays || 30} days` : immediateFlag ? "Immediate" : "Scheduled"}</strong>
+                </div>
+                <div className="policy-card-detail">
+                  <p className="policy-card-label">{isGraduation ? "Permanent Deletion Phase" : "Data Retention Period"}</p>
+                  <strong>{isGraduation ? `${deleteDays || 365} days` : `${retentionDays} days`}</strong>
+                </div>
+                {isGraduation ? (
+                  <div className="policy-card-detail">
+                    <p className="policy-card-label">Warning window</p>
+                    <strong>{warningDays || 14} days before suspend</strong>
+                  </div>
+                ) : null}
+              </div>
+            </div>
+
+            <div className="policy-card-footer">
+              <div className="policy-card-meta">
+                <p className="hint">Last evaluated {row.last_evaluated_at ? new Date(row.last_evaluated_at).toLocaleDateString() : "—"}</p>
+                <p className="hint">{row.hold_reason ?? "No hold reason set."}</p>
+              </div>
+              <div className="policy-card-actions">
+                <button type="button" className="secondary slim-button" onClick={() => void handleNextRun(row)} disabled={isLoading || isDispatching}>
+                  Next run
+                </button>
+                {canMutate ? (
+                  <>
+                    <button type="button" className="secondary slim-button" onClick={() => openEdit(row)} disabled={isLoading || isDispatching}>
+                      Edit
+                    </button>
+                    <button type="button" className="danger-button slim-button" onClick={() => setDeleteTarget(row)} disabled={isLoading || isDispatching}>
+                      Delete
+                    </button>
+                  </>
+                ) : null}
+              </div>
+            </div>
+          </article>
+        );
+      }),
+    [canMutate, handleNextRun, isDispatching, isLoading, openEdit, rows]
+  );
+
   return (
-    <section className="card stack module-page">
-      <header className="module-page-header">
+    <section className="card stack module-page policy-execution-page">
+      <header className="module-page-header policy-execution-header">
         <div>
-          <h2>Policy execution</h2>
+          <h1>Policy Execution Settings</h1>
           <p className="hint">
-            Define scoped or graduation lifecycle policies, monitor the automation queue, and review hold status from the evaluator.
-            Graduation policies email students before suspending accounts 60 days after graduation (configurable).
+            Define automated workflows for lifecycle management. Configure how and when accounts are suspended or permanently deleted based on status changes.
           </p>
         </div>
-        <div className="audit-actions">
-          <button type="button" className="secondary" onClick={() => void load()} disabled={isLoading}>
-            {isLoading ? "Loading…" : "Refresh"}
+        <div className="policy-execution-actions">
+          <button type="button" onClick={() => void handleRunAllPolicies()} disabled={isDispatching || isLoading}>
+            {isDispatching ? "Running…" : "Run All Policies Now"}
           </button>
-          {canMutate ? (
-            <button type="button" onClick={openCreate} disabled={isLoading}>
-              New policy
-            </button>
-          ) : null}
-          <Link className="hint-inline dashboard-link" to="/audit-logs">
-            Related audit →
-          </Link>
         </div>
       </header>
 
       {error ? <p className="toast toast-error">{error}</p> : null}
+
+      <div className="policy-execution-summary">
+        <article className="policy-summary-card">
+          <div className="summary-header">
+            <span className="summary-icon">⏰</span>
+            <div>
+              <p className="summary-title">Next Automation Window</p>
+              <p className="hint">{nextExecutionLabel}</p>
+            </div>
+          </div>
+          <p className="summary-copy">{scheduleHint}</p>
+          <div className="summary-badge status-pill status-pill-running">Automation active</div>
+        </article>
+
+        <article className="policy-summary-card">
+          <p className="summary-title">Policy execution queue</p>
+          <p className="summary-copy">
+            Pending: <strong>{queueData?.pending_count ?? "—"}</strong> · Failed: <strong>{queueData?.failed_count ?? "—"}</strong>
+          </p>
+          <p className="hint">Connection: {queueData?.queue_connection ?? "—"}</p>
+        </article>
+      </div>
+
+      <div className="policy-cards-grid">
+        {policyCards.length ? policyCards : (
+          <article className="policy-target-card empty-state">
+            <h3>No policies configured yet</h3>
+            <p className="hint">Create a new lifecycle policy to begin automated evaluation.</p>
+            {canMutate ? (
+              <button type="button" onClick={openCreate} disabled={isLoading || isDispatching}>
+                Create policy
+              </button>
+            ) : null}
+          </article>
+        )}
+      </div>
 
       <AutomationQueuePanel canDispatch={canMutate} refreshToken={queueRefreshToken} />
 

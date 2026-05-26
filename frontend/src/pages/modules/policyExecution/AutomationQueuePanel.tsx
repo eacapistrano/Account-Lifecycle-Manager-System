@@ -53,9 +53,7 @@ export function AutomationQueuePanel({ canDispatch, refreshToken = 0 }: Props) {
         <div>
           <h3>Scheduled automation queue</h3>
           <p className="hint">
-            Cron-driven jobs run via <code>php artisan schedule:run</code> and the queue worker. Pending:{" "}
-            <strong>{data?.pending_count ?? "—"}</strong> · Failed: <strong>{data?.failed_count ?? "—"}</strong>
-            {data?.queue_connection ? ` · Connection: ${data.queue_connection}` : null}
+            Cron-driven jobs run via <code>php artisan schedule:run</code> and the queue worker.
           </p>
         </div>
         <div className="audit-actions">
@@ -64,19 +62,10 @@ export function AutomationQueuePanel({ canDispatch, refreshToken = 0 }: Props) {
           </button>
           {canDispatch ? (
             <>
-              <button
-                type="button"
-                onClick={() => void dispatchTask("policy_evaluation")}
-                disabled={isLoading || isDispatching}
-              >
+              <button type="button" onClick={() => void dispatchTask("policy_evaluation")} disabled={isLoading || isDispatching}>
                 Queue policy run
               </button>
-              <button
-                type="button"
-                className="secondary"
-                onClick={() => void dispatchTask("suspended_due_dates")}
-                disabled={isLoading || isDispatching}
-              >
+              <button type="button" className="secondary" onClick={() => void dispatchTask("suspended_due_dates")} disabled={isLoading || isDispatching}>
                 Queue due-date run
               </button>
             </>
@@ -85,6 +74,21 @@ export function AutomationQueuePanel({ canDispatch, refreshToken = 0 }: Props) {
       </header>
 
       {error ? <p className="toast toast-error">{error}</p> : null}
+
+      <div className="automation-queue-summary">
+        <div className="automation-queue-stat">
+          <span>Pending jobs</span>
+          <strong>{data?.pending_count ?? "—"}</strong>
+        </div>
+        <div className="automation-queue-stat">
+          <span>Failed jobs</span>
+          <strong>{data?.failed_count ?? "—"}</strong>
+        </div>
+        <div className="automation-queue-stat">
+          <span>Connection</span>
+          <strong>{data?.queue_connection ?? "—"}</strong>
+        </div>
+      </div>
 
       <div className="automation-schedule-grid">
         {(data?.schedules ?? []).map((task) => (
@@ -100,10 +104,10 @@ export function AutomationQueuePanel({ canDispatch, refreshToken = 0 }: Props) {
         <table className="audit-table">
           <thead>
             <tr>
-              <th>Queued job</th>
+              <th>Task</th>
               <th>Status</th>
               <th>Attempts</th>
-              <th>Available</th>
+              <th>Next available</th>
             </tr>
           </thead>
           <tbody>
@@ -117,7 +121,11 @@ export function AutomationQueuePanel({ canDispatch, refreshToken = 0 }: Props) {
               data?.recent_pending.map((row) => (
                 <tr key={row.id}>
                   <td>{row.job_name}</td>
-                  <td>{row.status}</td>
+                  <td>
+                    <span className={`status-pill ${row.status === "processing" ? "status-pill-running" : "status-pill-queued"}`}>
+                      {row.status}
+                    </span>
+                  </td>
                   <td>{row.attempts}</td>
                   <td>{row.available_at ? new Date(row.available_at).toLocaleString() : "—"}</td>
                 </tr>
