@@ -8,6 +8,8 @@ use App\Models\Role;
 use App\Models\User;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Hash;
+use Illuminate\Validation\Rules\Password;
 
 class AuthorizationUserController extends Controller
 {
@@ -41,4 +43,33 @@ class AuthorizationUserController extends Controller
 
         return response()->json(['data' => $user->fresh()->load('role')]);
     }
+
+    public function store(Request $request): JsonResponse
+{
+    $validated = $request->validate([
+        'name' => ['required', 'string', 'max:255'],
+        'email' => ['required', 'email', 'max:255', 'unique:users,email'],
+        'password' => [
+            'required',
+            'confirmed',
+            Password::min(12)
+                ->mixedCase()
+                ->numbers()
+                ->symbols(),
+        ],
+        'role_id' => ['required', 'exists:roles,id'],
+    ]);
+
+    $user = User::create([
+        'name' => $validated['name'],
+        'email' => strtolower($validated['email']),
+        'password' => Hash::make($validated['password']),
+        'role_id' => $validated['role_id'],
+    ]);
+
+    return response()->json([
+        'message' => 'User created successfully.',
+        'data' => $user->load('role'),
+    ], 201);
+}
 }

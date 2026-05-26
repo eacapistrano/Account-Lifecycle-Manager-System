@@ -22,6 +22,19 @@ class User extends Authenticatable
     /**
      * @return BelongsTo<Role, $this>
      */
+
+    protected $fillable = [
+    'name',
+    'email',
+    'password',
+    'role_id',
+    ];
+
+    protected $hidden = [
+    'password',
+    'remember_token',
+    ];
+
     public function role(): BelongsTo
     {
         return $this->belongsTo(Role::class);
