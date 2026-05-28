@@ -47,6 +47,22 @@ export function AutomationQueuePanel({ canDispatch, refreshToken = 0 }: Props) {
     }
   }
 
+  const workspace = data?.google_workspace;
+  const suspendStatus = workspace?.ready_for_suspend
+    ? "Live"
+    : workspace?.suspend_enabled
+      ? workspace.suspend_dry_run
+        ? "Dry run"
+        : "Needs setup"
+      : "Disabled";
+  const deleteStatus = workspace?.ready_for_delete
+    ? "Live"
+    : workspace?.delete_enabled
+      ? workspace.delete_dry_run
+        ? "Dry run"
+        : "Needs setup"
+      : "Disabled";
+
   return (
     <section className="card stack automation-queue-panel">
       <header className="module-page-header">
@@ -58,7 +74,7 @@ export function AutomationQueuePanel({ canDispatch, refreshToken = 0 }: Props) {
         </div>
         <div className="audit-actions">
           <button type="button" className="secondary" onClick={() => void load()} disabled={isLoading || isDispatching}>
-            {isLoading ? "Loading…" : "Refresh queue"}
+            {isLoading ? "Loading..." : "Refresh queue"}
           </button>
           {canDispatch ? (
             <>
@@ -78,15 +94,15 @@ export function AutomationQueuePanel({ canDispatch, refreshToken = 0 }: Props) {
       <div className="automation-queue-summary">
         <div className="automation-queue-stat">
           <span>Pending jobs</span>
-          <strong>{data?.pending_count ?? "—"}</strong>
+          <strong>{data?.pending_count ?? "-"}</strong>
         </div>
         <div className="automation-queue-stat">
           <span>Failed jobs</span>
-          <strong>{data?.failed_count ?? "—"}</strong>
+          <strong>{data?.failed_count ?? "-"}</strong>
         </div>
         <div className="automation-queue-stat">
           <span>Connection</span>
-          <strong>{data?.queue_connection ?? "—"}</strong>
+          <strong>{data?.queue_connection ?? "-"}</strong>
         </div>
       </div>
 
@@ -99,6 +115,28 @@ export function AutomationQueuePanel({ canDispatch, refreshToken = 0 }: Props) {
           </article>
         ))}
       </div>
+
+      {workspace ? (
+        <div className="automation-schedule-grid">
+          <article className="automation-schedule-card">
+            <strong>Google Workspace suspend</strong>
+            <p className="hint">Status: {suspendStatus}</p>
+            <p className="hint">User key: {workspace.suspend_user_key}</p>
+          </article>
+          <article className="automation-schedule-card">
+            <strong>Google Workspace delete</strong>
+            <p className="hint">Status: {deleteStatus}</p>
+            <p className="hint">User key: {workspace.delete_user_key}</p>
+          </article>
+          <article className="automation-schedule-card">
+            <strong>Admin SDK credentials</strong>
+            <p className="hint">
+              Credentials: {workspace.credentials_readable ? "readable" : workspace.credentials_configured ? "not readable" : "not configured"}
+            </p>
+            <p className="hint">Impersonates: {workspace.impersonate_email ?? "not configured"}</p>
+          </article>
+        </div>
+      ) : null}
 
       <div className="audit-table-wrap">
         <table className="audit-table">
@@ -127,7 +165,7 @@ export function AutomationQueuePanel({ canDispatch, refreshToken = 0 }: Props) {
                     </span>
                   </td>
                   <td>{row.attempts}</td>
-                  <td>{row.available_at ? new Date(row.available_at).toLocaleString() : "—"}</td>
+                  <td>{row.available_at ? new Date(row.available_at).toLocaleString() : "-"}</td>
                 </tr>
               ))
             )}

@@ -15,7 +15,7 @@ function scopeLabel(ruleJson: Record<string, unknown>): string {
     const days = typeof ruleJson.suspend_after_days === "number" ? ruleJson.suspend_after_days : 60;
     const warn = typeof ruleJson.warning_days_before_suspend === "number" ? ruleJson.warning_days_before_suspend : 14;
     const status = typeof ruleJson.graduation_status === "string" ? ruleJson.graduation_status : "graduated";
-    return `Graduation · ${status} · suspend +${days}d · warn −${warn}d`;
+    return `Graduation - ${status} - suspend +${days}d - warn -${warn}d`;
   }
 
   const dept = typeof ruleJson.department === "string" ? ruleJson.department : "";
@@ -27,7 +27,7 @@ function scopeLabel(ruleJson: Record<string, unknown>): string {
   if (year) {
     parts.push(`Year ${year}`);
   }
-  return parts.length ? parts.join(" · ") : "—";
+  return parts.length ? parts.join(" - ") : "-";
 }
 
 export function PolicyExecutionWorkspace() {
@@ -189,7 +189,7 @@ export function PolicyExecutionWorkspace() {
 
             <div className="policy-card-footer">
               <div className="policy-card-meta">
-                <p className="hint">Last evaluated {row.last_evaluated_at ? new Date(row.last_evaluated_at).toLocaleDateString() : "—"}</p>
+                <p className="hint">Last evaluated {row.last_evaluated_at ? new Date(row.last_evaluated_at).toLocaleDateString() : "-"}</p>
                 <p className="hint">{row.hold_reason ?? "No hold reason set."}</p>
               </div>
               <div className="policy-card-actions">
@@ -225,7 +225,7 @@ export function PolicyExecutionWorkspace() {
         </div>
         <div className="policy-execution-actions">
           <button type="button" onClick={() => void handleRunAllPolicies()} disabled={isDispatching || isLoading}>
-            {isDispatching ? "Running…" : "Run All Policies Now"}
+            {isDispatching ? "Running..." : "Run All Policies Now"}
           </button>
         </div>
       </header>
@@ -248,9 +248,9 @@ export function PolicyExecutionWorkspace() {
         <article className="policy-summary-card">
           <p className="summary-title">Policy execution queue</p>
           <p className="summary-copy">
-            Pending: <strong>{queueData?.pending_count ?? "—"}</strong> · Failed: <strong>{queueData?.failed_count ?? "—"}</strong>
+            Pending: <strong>{queueData?.pending_count ?? "-"}</strong> - Failed: <strong>{queueData?.failed_count ?? "-"}</strong>
           </p>
-          <p className="hint">Connection: {queueData?.queue_connection ?? "—"}</p>
+          <p className="hint">Connection: {queueData?.queue_connection ?? "-"}</p>
         </article>
       </div>
 
@@ -274,13 +274,13 @@ export function PolicyExecutionWorkspace() {
         <div className="tracker-banner">
           <strong>Next run / state: {preview.title}</strong>
           <p className="hint">
-            execution_at: {preview.payload.execution_at ? new Date(preview.payload.execution_at).toLocaleString() : "—"} · cron:{" "}
-            {preview.payload.cron_expression ?? "—"} · last_status: {preview.payload.last_status} · last_evaluated_at:{" "}
-            {preview.payload.last_evaluated_at ? new Date(preview.payload.last_evaluated_at).toLocaleString() : "—"}
+            execution_at: {preview.payload.execution_at ? new Date(preview.payload.execution_at).toLocaleString() : "-"} - cron:{" "}
+            {preview.payload.cron_expression ?? "-"} - last_status: {preview.payload.last_status} - last_evaluated_at:{" "}
+            {preview.payload.last_evaluated_at ? new Date(preview.payload.last_evaluated_at).toLocaleString() : "-"}
             {preview.payload.policy_type === "student_graduation" && preview.payload.graduation_preview ? (
               <>
                 {" "}
-                · due warnings: {preview.payload.graduation_preview.eligible_warnings} · due suspensions:{" "}
+                - due warnings: {preview.payload.graduation_preview.eligible_warnings} - due suspensions:{" "}
                 {preview.payload.graduation_preview.eligible_suspensions}
               </>
             ) : null}
@@ -319,7 +319,7 @@ export function PolicyExecutionWorkspace() {
                   <td>{scopeLabel(row.rule_json)}</td>
                   <td>{row.is_active ? "Yes" : "No"}</td>
                   <td>{row.last_status}</td>
-                  <td className="wrap-cell">{row.hold_reason ?? "—"}</td>
+                  <td className="wrap-cell">{row.hold_reason ?? "-"}</td>
                   <td className="col-actions policy-row-actions">
                     <button type="button" className="secondary slim-button" onClick={() => void handleNextRun(row)} disabled={isLoading}>
                       Next run

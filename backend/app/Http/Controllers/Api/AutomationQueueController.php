@@ -57,6 +57,7 @@ class AutomationQueueController extends Controller
             'queue_connection' => $connection,
             'pending_count' => $pending,
             'failed_count' => $failed,
+            'google_workspace' => $this->googleWorkspaceStatus(),
             'schedules' => $this->scheduledTasks(),
             'recent_pending' => $recentPending,
             'recent_failed' => $recentFailed,
@@ -113,6 +114,57 @@ class AutomationQueueController extends Controller
         }
 
         return $tasks;
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function googleWorkspaceStatus(): array
+    {
+        $credentialsPath = (string) config('google_workspace.credentials_path');
+        $resolvedCredentialsPath = $this->resolveReadablePath($credentialsPath);
+        $scopes = config('google_workspace.scopes', []);
+        $impersonateEmail = trim((string) config('google_workspace.impersonate_email'));
+
+        return [
+            'suspend_enabled' => (bool) config('google_workspace.suspend_enabled'),
+            'suspend_dry_run' => (bool) config('google_workspace.suspend_dry_run'),
+            'delete_enabled' => (bool) config('google_workspace.delete_enabled'),
+            'delete_dry_run' => (bool) config('security.student_delete_dry_run'),
+            'credentials_configured' => $credentialsPath !== '',
+            'credentials_readable' => $resolvedCredentialsPath !== null,
+            'impersonation_configured' => $impersonateEmail !== '',
+            'impersonate_email' => $impersonateEmail !== '' ? $impersonateEmail : null,
+            'scopes' => is_array($scopes) ? array_values($scopes) : [],
+            'suspend_user_key' => (string) config('google_workspace.suspend_user_key'),
+            'delete_user_key' => (string) config('google_workspace.delete_user_key'),
+            'ready_for_suspend' => (bool) config('google_workspace.suspend_enabled')
+                && ! (bool) config('google_workspace.suspend_dry_run')
+                && $resolvedCredentialsPath !== null
+                && $impersonateEmail !== '',
+            'ready_for_delete' => (bool) config('google_workspace.delete_enabled')
+                && ! (bool) config('security.student_delete_dry_run')
+                && $resolvedCredentialsPath !== null
+                && $impersonateEmail !== '',
+        ];
+    }
+
+    private function resolveReadablePath(string $path): ?string
+    {
+        if ($path === '') {
+            return null;
+        }
+
+        if (is_file($path) && is_readable($path)) {
+            return $path;
+        }
+
+        $relativeToBase = base_path($path);
+        if (is_file($relativeToBase) && is_readable($relativeToBase)) {
+            return $relativeToBase;
+        }
+
+        return null;
     }
 
     private function resolveJobNameFromPayload(string $payload): string

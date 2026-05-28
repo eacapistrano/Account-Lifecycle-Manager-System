@@ -55,6 +55,21 @@ export type AutomationQueueResponse = {
   queue_connection: string;
   pending_count: number;
   failed_count: number;
+  google_workspace?: {
+    suspend_enabled: boolean;
+    suspend_dry_run: boolean;
+    delete_enabled: boolean;
+    delete_dry_run: boolean;
+    credentials_configured: boolean;
+    credentials_readable: boolean;
+    impersonation_configured: boolean;
+    impersonate_email: string | null;
+    scopes: string[];
+    suspend_user_key: string;
+    delete_user_key: string;
+    ready_for_suspend: boolean;
+    ready_for_delete: boolean;
+  };
   schedules: AutomationScheduleTask[];
   recent_pending: AutomationQueueJobRow[];
   recent_failed: Array<{

@@ -24,20 +24,22 @@ class StudentAccountLifecycleService
     {
         $this->setSuspendedByExternalAccountId($externalAccountId, false);
     }
-public function unsuspendByPrimaryEmail(string $email): void
-{
-    $student = Student::where('primary_email', $email)
-        ->firstOrFail();
 
-    $this->googleWorkspaceUserSuspender->setSuspended($email, false);
+    public function unsuspendByPrimaryEmail(string $email): void
+    {
+        $student = Student::query()
+            ->where('primary_email', $email)
+            ->firstOrFail();
 
-    $student->suspended = false;
-    $student->priority_flag = false;
-    $student->compliance_notes = null;
-    $student->deletion_scheduled_at = null;
+        $this->applyGoogleSuspendedState($student, false);
 
-    $student->save();
-}
+        $student->suspended = false;
+        $student->priority_flag = false;
+        $student->compliance_notes = null;
+        $student->deletion_scheduled_at = null;
+        $student->save();
+    }
+
     private function setSuspendedByExternalAccountId(string $externalAccountId, bool $suspended): void
     {
         Log::info('StudentAccountLifecycleService.setSuspendedByExternalAccountId called', [
@@ -60,6 +62,8 @@ public function unsuspendByPrimaryEmail(string $email): void
             'currentSuspendedStatus' => $student->suspended,
         ]);
 
+        $this->applyGoogleSuspendedState($student, $suspended);
+
         $student->suspended = $suspended;
         $student->save();
 
@@ -68,46 +72,6 @@ public function unsuspendByPrimaryEmail(string $email): void
             'email' => $student->primary_email,
             'newSuspendedStatus' => $suspended,
         ]);
-
-        if (! config('google_workspace.suspend_enabled')) {
-            Log::info('Google Workspace suspension is disabled, skipping API call', [
-                'externalAccountId' => $externalAccountId,
-            ]);
-            return;
-        }
-
-        if (config('google_workspace.suspend_dry_run')) {
-            Log::info('Google Workspace dry-run mode enabled, skipping actual API call', [
-                'externalAccountId' => $externalAccountId,
-                'email' => $student->primary_email,
-                'wouldsuspend' => $suspended,
-            ]);
-            return;
-        }
-
-        $userKey = $this->googleWorkspaceUserKey($student);
-        Log::info('Calling Google Workspace suspend API', [
-            'externalAccountId' => $externalAccountId,
-            'email' => $student->primary_email,
-            'userKey' => $userKey,
-            'suspended' => $suspended,
-        ]);
-
-        try {
-            $this->googleWorkspaceUserSuspender->setSuspended($userKey, $suspended);
-            Log::info('Successfully called Google Workspace suspend API', [
-                'externalAccountId' => $externalAccountId,
-                'userKey' => $userKey,
-            ]);
-        } catch (\Throwable $e) {
-            Log::error('Failed to call Google Workspace suspend API', [
-                'externalAccountId' => $externalAccountId,
-                'userKey' => $userKey,
-                'errorMessage' => $e->getMessage(),
-                'trace' => $e->getTraceAsString(),
-            ]);
-            throw $e;
-        }
     }
 
     private function googleWorkspaceUserKey(Student $student): string
@@ -117,6 +81,54 @@ public function unsuspendByPrimaryEmail(string $email): void
         }
 
         return $student->primary_email; // Default to primary_email if config is invalid or not set, since external_account_id may not be unique for suspension.
+    }
+
+    private function applyGoogleSuspendedState(Student $student, bool $suspended): void
+    {
+        if (! config('google_workspace.suspend_enabled')) {
+            Log::info('Google Workspace suspension is disabled, skipping API call', [
+                'externalAccountId' => $student->external_account_id,
+                'email' => $student->primary_email,
+                'suspended' => $suspended,
+            ]);
+
+            return;
+        }
+
+        if (config('google_workspace.suspend_dry_run')) {
+            Log::info('Google Workspace dry-run mode enabled, skipping actual API call', [
+                'externalAccountId' => $student->external_account_id,
+                'email' => $student->primary_email,
+                'wouldSuspend' => $suspended,
+            ]);
+
+            return;
+        }
+
+        $userKey = $this->googleWorkspaceUserKey($student);
+        Log::info('Calling Google Workspace suspend API', [
+            'externalAccountId' => $student->external_account_id,
+            'email' => $student->primary_email,
+            'userKey' => $userKey,
+            'suspended' => $suspended,
+        ]);
+
+        try {
+            $this->googleWorkspaceUserSuspender->setSuspended($userKey, $suspended);
+            Log::info('Successfully called Google Workspace suspend API', [
+                'externalAccountId' => $student->external_account_id,
+                'userKey' => $userKey,
+            ]);
+        } catch (\Throwable $e) {
+            Log::error('Failed to call Google Workspace suspend API', [
+                'externalAccountId' => $student->external_account_id,
+                'userKey' => $userKey,
+                'errorMessage' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
+
+            throw $e;
+        }
     }
 
     /**

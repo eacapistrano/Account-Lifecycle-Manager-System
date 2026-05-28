@@ -26,7 +26,7 @@ class GoogleWorkspaceDirectoryUserSuspender implements GoogleWorkspaceUserSuspen
         }
 
         try {
-            $user = new Directory\User();
+            $user = new Directory\User;
             $user->setSuspended($suspended);
 
             $this->directoryService()->users->patch($userKey, $user);
@@ -45,52 +45,7 @@ class GoogleWorkspaceDirectoryUserSuspender implements GoogleWorkspaceUserSuspen
             throw $e;
         }
     }
-public function unsuspend(Request $request, StudentAccountLifecycleService $lifecycle)
-{
-    $max = (int) config('security.bulk_account_ids_max', 500);
 
-    $data = $request->validate([
-        'account_ids' => ['sometimes', 'array', 'max:'.$max],
-        'account_ids.*' => ['required_with:account_ids', 'string', 'max:255'],
-        'google_ids' => ['sometimes', 'array', 'max:'.$max],
-        'google_ids.*' => ['required_with:google_ids', 'string', 'max:255'],
-    ]);
-
-    $ids = $data['account_ids'] ?? $data['google_ids'] ?? [];
-
-    if ($ids === []) {
-        throw ValidationException::withMessages([
-            'account_ids' => ['The account ids field is required.'],
-        ]);
-    }
-
-    $failures = [];
-
-    foreach ($ids as $accountId) {
-        try {
-            $student = \App\Models\Student::where('external_account_id', $accountId)
-                ->orWhere('primary_email', $accountId)
-                ->firstOrFail();
-
-            $lifecycle->unsuspendByPrimaryEmail($student->primary_email);
-
-        } catch (\Throwable $e) {
-            $failures[] = [
-                'account_id' => $accountId,
-                'error' => $e->getMessage(),
-            ];
-        }
-    }
-
-    return response()->json([
-        'queued' => false,
-        'action' => 'unsuspend',
-        'count' => count($ids),
-        'ok' => count($ids) - count($failures),
-        'failed' => count($failures),
-        'failures' => $failures,
-    ], 200);
-}
     private function directoryService(): Directory
     {
         if ($this->directory instanceof Directory) {
@@ -103,7 +58,7 @@ public function unsuspend(Request $request, StudentAccountLifecycleService $life
             throw new RuntimeException('GOOGLE_WORKSPACE_IMPERSONATE_EMAIL is required.');
         }
 
-        $client = new Client();
+        $client = new Client;
         $client->setAuthConfig($resolvedPath);
         $client->setScopes($this->scopes);
         $client->setSubject($this->impersonateEmail);
@@ -132,7 +87,7 @@ public function unsuspend(Request $request, StudentAccountLifecycleService $life
         }
 
         throw new RuntimeException(
-            'Google Workspace credentials file not found. Checked: ' . $path . ' and ' . $relativeToBase
+            'Google Workspace credentials file not found. Checked: '.$path.' and '.$relativeToBase
         );
     }
 }

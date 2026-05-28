@@ -26,10 +26,6 @@ export function StudentDeletionFiltersBar({
     onFiltersChange({ ...filters, search: searchDraft.trim() });
   }
 
-  function patchEmail(value: string) {
-    onFiltersChange({ ...filters, email: value });
-  }
-
   return (
     <div className="audit-filters student-filters">
 
