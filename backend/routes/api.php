@@ -19,12 +19,6 @@ Route::post('/delete-google-user', [GoogleUserController::class, 'deleteUser']);
 Route::post('/auth/login', [AuthController::class, 'login'])->middleware('throttle:login');
 Route::post('/login', [AuthController::class, 'login'])->middleware('throttle:login');
 
-Route::middleware(['permission:users.manage', 'throttle:sensitive'])->group(function (): void {
-    Route::get('/authorization/users', [AuthorizationUserController::class, 'index']);
-    Route::post('/authorization/users', [AuthorizationUserController::class, 'store']);
-    Route::patch('/authorization/users/{user}/role', [AuthorizationUserController::class, 'updateRole']);
-});
-
 Route::middleware(['auth:sanctum', 'throttle:api', 'audit.append'])->group(function (): void {
     Route::post('/auth/logout', [AuthController::class, 'logout']);
     Route::post('/logout', [AuthController::class, 'logout']);
@@ -72,6 +66,7 @@ Route::middleware(['auth:sanctum', 'throttle:api', 'audit.append'])->group(funct
 
     Route::middleware(['permission:users.manage', 'throttle:sensitive'])->group(function (): void {
         Route::get('/authorization/users', [AuthorizationUserController::class, 'index']);
+        Route::post('/authorization/users', [AuthorizationUserController::class, 'store']);
         Route::patch('/authorization/users/{user}/role', [AuthorizationUserController::class, 'updateRole']);
     });
 
