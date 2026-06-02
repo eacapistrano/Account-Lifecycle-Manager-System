@@ -21,7 +21,7 @@ class CeuEmailListFormulaGenerator
     public function generate(string $studentId, string $lastName): string
     {
         $studentId = trim($studentId);
-        $lastNameNoSpaces = str_replace(' ', '', trim($lastName));
+        $lastNameNoSpaces = $this->normalizeLastName($lastName);
 
         if ($studentId === '' || $lastNameNoSpaces === '') {
             throw new InvalidArgumentException('CEU email formula requires non-empty student ID and last name.');
@@ -67,6 +67,17 @@ class CeuEmailListFormulaGenerator
         $default = (int) config('student_import.email_formula_id_suffix_length', 5);
 
         return max(1, min(20, $default));
+    }
+
+    private function normalizeLastName(string $lastName): string
+    {
+        $lastName = trim($lastName);
+
+        $lastName = preg_replace('/(?:,\s*)?jr\.?\s*$/iu', '', $lastName);
+        $lastName = str_replace(['ñ', 'Ñ'], 'n', $lastName);
+        $lastName = str_replace(' ', '', $lastName);
+
+        return $lastName;
     }
 
     private function excelLeft(string $value, int $n): string

@@ -39,6 +39,14 @@ class CeuEmailListFormulaGeneratorTest extends TestCase
         $this->assertSame('delossantos9901234@ceu.edu.ph', $g->generate('1999-01234', 'DE LOS SANTOS'));
     }
 
+    public function test_removes_jr_and_replaces_ntilde_in_last_name(): void
+    {
+        $g = new CeuEmailListFormulaGenerator;
+
+        $this->assertSame('pena2500001@mnl.ceu.edu.ph', $g->generate('2025-00001', 'PEÑA JR.'));
+        $this->assertSame('santos2500001@mnl.ceu.edu.ph', $g->generate('2025-00001', 'SANTOS JR'));
+    }
+
     public function test_uses_mnl_domain_when_left_four_equals_configured_year(): void
     {
         $g = new CeuEmailListFormulaGenerator;
