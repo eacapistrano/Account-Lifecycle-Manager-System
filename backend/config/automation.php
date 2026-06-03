@@ -9,6 +9,8 @@ return [
     'graduation' => [
         'suspend_after_days' => (int) env('GRADUATION_SUSPEND_AFTER_DAYS', 60),
         'warning_days_before_suspend' => (int) env('GRADUATION_WARNING_DAYS_BEFORE_SUSPEND', 14),
+        'permanent_delete_after_days' => (int) env('GRADUATION_PERMANENT_DELETE_AFTER_DAYS', 0),
+        'warning_days_before_delete' => (int) env('GRADUATION_WARNING_DAYS_BEFORE_DELETE', 0),
     ],
 
     'notifications' => [

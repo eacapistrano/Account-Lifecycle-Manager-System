@@ -28,9 +28,12 @@ export type PolicyNextRunResponse = {
   policy_type?: PolicyRuleType;
   suspend_after_days?: number;
   warning_days_before_suspend?: number;
+  permanent_delete_after_days?: number;
+  warning_days_before_delete?: number;
   graduation_preview?: {
     eligible_warnings: number;
     eligible_suspensions: number;
+    eligible_deletion_warnings?: number;
   };
 };
 

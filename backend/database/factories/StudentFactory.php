@@ -40,6 +40,8 @@ class StudentFactory extends Factory
             ]),
             'suspended' => fake()->boolean(22),
             'deletion_scheduled_at' => fake()->optional(0.12)->dateTimeBetween('-30 days', '+60 days'),
+            'graduation_warning_sent_at' => fake()->optional(0.35)->dateTimeBetween('-30 days', 'now'),
+            'graduation_deletion_warning_sent_at' => null,
             'priority_flag' => fake()->boolean(8),
             'compliance_notes' => fake()->optional(0.15)->sentence(8),
             'raw_json' => [

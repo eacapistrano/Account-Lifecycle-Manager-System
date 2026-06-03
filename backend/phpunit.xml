@@ -36,5 +36,8 @@
         <env name="PULSE_ENABLED" value="false"/>
         <env name="TELESCOPE_ENABLED" value="false"/>
         <env name="NIGHTWATCH_ENABLED" value="false"/>
+        <env name="GOOGLE_WORKSPACE_SUSPEND_ENABLED" value="false"/>
+        <env name="GOOGLE_WORKSPACE_SUSPEND_DRY_RUN" value="true"/>
+        <env name="GOOGLE_WORKSPACE_DELETE_ENABLED" value="false"/>
     </php>
 </phpunit>

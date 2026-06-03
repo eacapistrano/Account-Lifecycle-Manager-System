@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Mail\GraduationAccountDeletionNoticeMail;
 use App\Mail\GraduationAccountNoticeMail;
 use App\Models\Policy;
 use App\Models\Student;
@@ -16,13 +17,15 @@ class StudentGraduationPolicyEvaluator
     ) {}
 
     /**
-     * @return array{warnings_sent: int, suspended: int, failures: array<int, array{external_account_id: string, error: string}>}
+     * @return array{warnings_sent: int, deletion_warnings_sent: int, suspended: int, failures: array<int, array{external_account_id: string, error: string}>}
      */
     public function evaluate(Policy $policy): array
     {
         $rules = $policy->rule_json ?? [];
         $suspendAfterDays = max(1, (int) ($rules['suspend_after_days'] ?? config('automation.graduation.suspend_after_days', 60)));
         $warningDaysBefore = max(0, (int) ($rules['warning_days_before_suspend'] ?? config('automation.graduation.warning_days_before_suspend', 14)));
+        $deleteAfterDays = max(0, (int) ($rules['permanent_delete_after_days'] ?? 0));
+        $warningDaysBeforeDelete = max(0, (int) ($rules['warning_days_before_delete'] ?? 0));
         $graduationStatus = trim((string) ($rules['graduation_status'] ?? 'graduated'));
         if ($graduationStatus === '') {
             $graduationStatus = 'graduated';
@@ -30,24 +33,29 @@ class StudentGraduationPolicyEvaluator
 
         $today = now()->startOfDay();
         $warningsSent = 0;
+        $deletionWarningsSent = 0;
         $suspended = 0;
         $failures = [];
 
         $students = Student::query()
             ->where('graduation_status', $graduationStatus)
             ->whereNotNull('graduation_date')
-            ->where('suspended', false)
             ->get();
 
         foreach ($students as $student) {
             $graduationDate = Carbon::parse($student->graduation_date)->startOfDay();
             $suspendOn = $graduationDate->copy()->addDays($suspendAfterDays);
             $warningOn = $suspendOn->copy()->subDays($warningDaysBefore);
+            $deleteOn = $deleteAfterDays > 0 ? $suspendOn->copy()->addDays($deleteAfterDays) : null;
 
-            if ($today->gte($suspendOn)) {
+            if ($today->gte($suspendOn) && ! $student->suspended) {
                 $result = $this->suspendGraduate($policy, $student);
                 if ($result === true) {
                     $suspended++;
+                    if ($deleteOn !== null && $student->deletion_scheduled_at === null) {
+                        $student->deletion_scheduled_at = $deleteOn;
+                        $student->save();
+                    }
                 } elseif (is_string($result)) {
                     $failures[] = [
                         'external_account_id' => $student->external_account_id,
@@ -69,10 +77,34 @@ class StudentGraduationPolicyEvaluator
                     ];
                 }
             }
+
+            if ($deleteAfterDays > 0 && $student->suspended) {
+                $scheduledDeletion = $student->deletion_scheduled_at ? Carbon::parse($student->deletion_scheduled_at)->startOfDay() : $deleteOn;
+                if ($scheduledDeletion !== null && $student->deletion_scheduled_at === null) {
+                    $student->deletion_scheduled_at = $scheduledDeletion;
+                    $student->save();
+                }
+
+                if ($warningDaysBeforeDelete > 0 && $scheduledDeletion !== null) {
+                    $deletionWarningOn = $scheduledDeletion->copy()->subDays($warningDaysBeforeDelete);
+                    if ($today->gte($deletionWarningOn) && $student->graduation_deletion_warning_sent_at === null) {
+                        $result = $this->sendDeletionWarning($policy, $student, $scheduledDeletion, $today);
+                        if ($result === true) {
+                            $deletionWarningsSent++;
+                        } elseif (is_string($result)) {
+                            $failures[] = [
+                                'external_account_id' => $student->external_account_id,
+                                'error' => $result,
+                            ];
+                        }
+                    }
+                }
+            }
         }
 
         return [
             'warnings_sent' => $warningsSent,
+            'deletion_warnings_sent' => $deletionWarningsSent,
             'suspended' => $suspended,
             'failures' => $failures,
         ];
@@ -80,7 +112,7 @@ class StudentGraduationPolicyEvaluator
 
     /**
      * @param  array<string, mixed>  $rules
-     * @return array{eligible_warnings: int, eligible_suspensions: int}
+     * @return array{eligible_warnings: int, eligible_suspensions: int, eligible_deletion_warnings: int}
      */
     public function previewCounts(array $rules = []): array
     {
@@ -91,35 +123,48 @@ class StudentGraduationPolicyEvaluator
 
         $suspendAfterDays = max(1, (int) ($rules['suspend_after_days'] ?? config('automation.graduation.suspend_after_days', 60)));
         $warningDaysBefore = max(0, (int) ($rules['warning_days_before_suspend'] ?? config('automation.graduation.warning_days_before_suspend', 14)));
+        $deleteAfterDays = max(0, (int) ($rules['permanent_delete_after_days'] ?? 0));
+        $warningDaysBeforeDelete = max(0, (int) ($rules['warning_days_before_delete'] ?? 0));
         $today = now()->startOfDay();
 
         $eligibleWarnings = 0;
         $eligibleSuspensions = 0;
+        $eligibleDeletionWarnings = 0;
 
         Student::query()
             ->where('graduation_status', $status)
             ->whereNotNull('graduation_date')
-            ->where('suspended', false)
             ->get()
-            ->each(function (Student $student) use ($suspendAfterDays, $warningDaysBefore, $today, &$eligibleWarnings, &$eligibleSuspensions): void {
+            ->each(function (Student $student) use ($suspendAfterDays, $warningDaysBefore, $deleteAfterDays, $warningDaysBeforeDelete, $today, &$eligibleWarnings, &$eligibleSuspensions, &$eligibleDeletionWarnings): void {
                 $graduationDate = Carbon::parse($student->graduation_date)->startOfDay();
                 $suspendOn = $graduationDate->copy()->addDays($suspendAfterDays);
                 $warningOn = $suspendOn->copy()->subDays($warningDaysBefore);
 
-                if ($today->gte($suspendOn)) {
+                if (! $student->suspended && $today->gte($suspendOn)) {
                     $eligibleSuspensions++;
 
                     return;
                 }
 
-                if ($warningDaysBefore > 0 && $today->gte($warningOn) && $student->graduation_warning_sent_at === null) {
+                if ($warningDaysBefore > 0 && ! $student->suspended && $today->gte($warningOn) && $student->graduation_warning_sent_at === null) {
                     $eligibleWarnings++;
+                }
+
+                if ($deleteAfterDays > 0 && $student->suspended) {
+                    $scheduledDeletion = $student->deletion_scheduled_at ? Carbon::parse($student->deletion_scheduled_at)->startOfDay() : $suspendOn->copy()->addDays($deleteAfterDays);
+                    if ($warningDaysBeforeDelete > 0 && $student->graduation_deletion_warning_sent_at === null) {
+                        $deletionWarningOn = $scheduledDeletion->copy()->subDays($warningDaysBeforeDelete);
+                        if ($today->gte($deletionWarningOn)) {
+                            $eligibleDeletionWarnings++;
+                        }
+                    }
                 }
             });
 
         return [
             'eligible_warnings' => $eligibleWarnings,
             'eligible_suspensions' => $eligibleSuspensions,
+            'eligible_deletion_warnings' => $eligibleDeletionWarnings,
         ];
     }
 
@@ -132,7 +177,7 @@ class StudentGraduationPolicyEvaluator
                 daysUntilSuspend: max(0, (int) $today->diffInDays($suspendOn, false)),
             ));
 
-            $student->graduation_warning_sent_at = now();
+            $student->graduation_warning_sent_at = \Illuminate\Support\Carbon::now();
             $student->save();
 
             $this->audit->record(
@@ -160,6 +205,43 @@ class StudentGraduationPolicyEvaluator
         }
     }
 
+    private function sendDeletionWarning(Policy $policy, Student $student, Carbon $deleteOn, Carbon $today): bool|string
+    {
+        try {
+            Mail::to($student->primary_email)->send(new GraduationAccountDeletionNoticeMail(
+                studentName: $student->full_name ?: $student->primary_email,
+                deleteOn: $deleteOn,
+                daysUntilDelete: max(0, (int) $today->diffInDays($deleteOn, false)),
+            ));
+
+            $student->graduation_deletion_warning_sent_at = \Illuminate\Support\Carbon::now();
+            $student->save();
+
+            $this->audit->record(
+                'policy_execution',
+                'policy.graduation_deletion_warning',
+                $student->external_account_id,
+                [
+                    'policy_id' => $policy->id,
+                    'delete_on' => $deleteOn->toDateString(),
+                ],
+            );
+
+            return true;
+        } catch (\Throwable $e) {
+            $this->audit->record(
+                'policy_execution',
+                'policy.graduation_deletion_warning',
+                $student->external_account_id,
+                ['policy_id' => $policy->id],
+                false,
+                $e->getMessage(),
+            );
+
+            return $e->getMessage();
+        }
+    }
+
     private function suspendGraduate(Policy $policy, Student $student): bool|string
     {
         try {
@@ -172,7 +254,7 @@ class StudentGraduationPolicyEvaluator
                 [
                     'policy_id' => $policy->id,
                     'reason' => 'graduation_suspend_after_days',
-                    'graduation_date' => $student->graduation_date?->format('Y-m-d'),
+                    'graduation_date' => $student->graduation_date ? Carbon::parse($student->graduation_date)->toDateString() : null,
                 ],
             );
 

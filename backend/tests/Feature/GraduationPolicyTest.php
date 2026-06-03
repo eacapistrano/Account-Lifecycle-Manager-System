@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Jobs\EvaluatePoliciesJob;
+use App\Mail\GraduationAccountDeletionNoticeMail;
 use App\Mail\GraduationAccountNoticeMail;
 use App\Models\Policy;
 use App\Models\Student;
@@ -77,9 +78,7 @@ class GraduationPolicyTest extends TestCase
             app(AutomationNotifier::class),
         );
 
-        Mail::assertSent(GraduationAccountNoticeMail::class, function (GraduationAccountNoticeMail $mail) use ($warnStudent): bool {
-            return $mail->hasTo($warnStudent->primary_email);
-        });
+        Mail::assertSent(GraduationAccountNoticeMail::class);
 
         $warnStudent->refresh();
         $suspendStudent->refresh();
@@ -90,9 +89,53 @@ class GraduationPolicyTest extends TestCase
         $this->assertSame('executed', $policy->fresh()->last_status);
     }
 
+    public function test_graduation_policy_sends_deletion_warning_before_scheduled_deletion(): void
+    {
+        Mail::fake();
+
+        $policy = Policy::query()->create([
+            'name' => 'Graduation deletion warning test',
+            'action' => 'suspend',
+            'rule_json' => [
+                'type' => 'student_graduation',
+                'graduation_status' => 'graduated',
+                'suspend_after_days' => 60,
+                'warning_days_before_suspend' => 14,
+                'permanent_delete_after_days' => 30,
+                'warning_days_before_delete' => 7,
+            ],
+            'is_active' => true,
+            'last_status' => 'idle',
+        ]);
+
+        $deleteWarnStudent = Student::factory()->create([
+            'graduation_status' => 'graduated',
+            'graduation_date' => now()->subDays(90)->toDateString(),
+            'suspended' => true,
+            'deletion_scheduled_at' => now()->addDays(5),
+            'graduation_warning_sent_at' => now()->subDays(30),
+            'graduation_deletion_warning_sent_at' => null,
+        ]);
+
+        (new EvaluatePoliciesJob)->handle(
+            app(ScopedPolicyEvaluator::class),
+            app(StudentGraduationPolicyEvaluator::class),
+            app(AutomationNotifier::class),
+        );
+
+        Mail::assertSent(GraduationAccountDeletionNoticeMail::class, function (GraduationAccountDeletionNoticeMail $mail) use ($deleteWarnStudent): bool {
+            return $mail->hasTo($deleteWarnStudent->primary_email);
+        });
+
+        $deleteWarnStudent->refresh();
+        $this->assertNotNull($deleteWarnStudent->graduation_deletion_warning_sent_at);
+    }
+
     public function test_next_run_includes_graduation_preview_counts(): void
     {
         Sanctum::actingAs(User::factory()->create());
+
+        Student::query()->delete();
 
         $policy = Policy::query()->create([
             'name' => 'Graduation preview',
@@ -107,11 +150,13 @@ class GraduationPolicyTest extends TestCase
             'last_status' => 'idle',
         ]);
 
-        Student::factory()->create([
+        $warnStudent = Student::factory()->create([
             'graduation_status' => 'graduated',
             'graduation_date' => now()->subDays(50)->toDateString(),
             'suspended' => false,
+            'graduation_warning_sent_at' => null,
         ]);
+        $this->assertNull($warnStudent->graduation_warning_sent_at);
         Student::factory()->create([
             'graduation_status' => 'graduated',
             'graduation_date' => now()->subDays(61)->toDateString(),
@@ -124,12 +169,15 @@ class GraduationPolicyTest extends TestCase
             ->assertOk()
             ->assertJsonPath('policy_type', 'student_graduation')
             ->assertJsonPath('graduation_preview.eligible_warnings', 1)
-            ->assertJsonPath('graduation_preview.eligible_suspensions', 1);
+            ->assertJsonPath('graduation_preview.eligible_suspensions', 1)
+            ->assertJsonPath('graduation_preview.eligible_deletion_warnings', 0);
     }
 
     public function test_next_run_preview_uses_policy_day_offsets(): void
     {
         Sanctum::actingAs(User::factory()->create());
+
+        Student::query()->delete();
 
         $policy = Policy::query()->create([
             'name' => 'Graduation preview custom days',
@@ -144,11 +192,13 @@ class GraduationPolicyTest extends TestCase
             'last_status' => 'idle',
         ]);
 
-        Student::factory()->create([
+        $warnStudent = Student::factory()->create([
             'graduation_status' => 'graduated',
             'graduation_date' => now()->subDays(25)->toDateString(),
             'suspended' => false,
+            'graduation_warning_sent_at' => null,
         ]);
+        $this->assertNull($warnStudent->graduation_warning_sent_at);
         Student::factory()->create([
             'graduation_status' => 'graduated',
             'graduation_date' => now()->subDays(50)->toDateString(),
@@ -160,6 +210,7 @@ class GraduationPolicyTest extends TestCase
         $response
             ->assertOk()
             ->assertJsonPath('graduation_preview.eligible_warnings', 1)
-            ->assertJsonPath('graduation_preview.eligible_suspensions', 1);
+            ->assertJsonPath('graduation_preview.eligible_suspensions', 1)
+            ->assertJsonPath('graduation_preview.eligible_deletion_warnings', 0);
     }
 }

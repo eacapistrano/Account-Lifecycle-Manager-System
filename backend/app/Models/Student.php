@@ -24,6 +24,7 @@ use Illuminate\Database\Eloquent\Model;
     'raw_json',
     'last_imported_at',
     'graduation_warning_sent_at',
+    'graduation_deletion_warning_sent_at',
 ])]
 class Student extends Model
 {
@@ -39,6 +40,7 @@ class Student extends Model
             'graduation_date' => 'date',
             'last_imported_at' => 'datetime',
             'graduation_warning_sent_at' => 'datetime',
+            'graduation_deletion_warning_sent_at' => 'datetime',
             'raw_json' => 'array',
         ];
     }

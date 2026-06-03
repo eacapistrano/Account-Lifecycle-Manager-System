@@ -14,8 +14,17 @@ function scopeLabel(ruleJson: Record<string, unknown>): string {
   if (ruleJson.type === "student_graduation") {
     const days = typeof ruleJson.suspend_after_days === "number" ? ruleJson.suspend_after_days : 60;
     const warn = typeof ruleJson.warning_days_before_suspend === "number" ? ruleJson.warning_days_before_suspend : 14;
+    const deleteDays = typeof ruleJson.permanent_delete_after_days === "number" ? ruleJson.permanent_delete_after_days : 0;
+    const deleteWarn = typeof ruleJson.warning_days_before_delete === "number" ? ruleJson.warning_days_before_delete : 0;
     const status = typeof ruleJson.graduation_status === "string" ? ruleJson.graduation_status : "graduated";
-    return `Graduation - ${status} - suspend +${days}d - warn -${warn}d`;
+    const parts = [`Graduation - ${status} - suspend +${days}d - warn -${warn}d`];
+    if (deleteDays > 0) {
+      parts.push(`delete +${deleteDays}d`);
+    }
+    if (deleteWarn > 0) {
+      parts.push(`delete warn -${deleteWarn}d`);
+    }
+    return parts.join(" - ");
   }
 
   const dept = typeof ruleJson.department === "string" ? ruleJson.department : "";
@@ -176,13 +185,19 @@ export function PolicyExecutionWorkspace() {
                 </div>
                 <div className="policy-card-detail">
                   <p className="policy-card-label">{isGraduation ? "Permanent Deletion Phase" : "Data Retention Period"}</p>
-                  <strong>{isGraduation ? `${deleteDays || 365} days` : `${retentionDays} days`}</strong>
+                  <strong>{isGraduation ? (deleteDays > 0 ? `${deleteDays} days` : "None") : `${retentionDays} days`}</strong>
                 </div>
                 {isGraduation ? (
-                  <div className="policy-card-detail">
-                    <p className="policy-card-label">Warning window</p>
-                    <strong>{warningDays || 14} days before suspend</strong>
-                  </div>
+                  <>
+                    <div className="policy-card-detail">
+                      <p className="policy-card-label">Warning window</p>
+                      <strong>{warningDays > 0 ? `${warningDays} days before suspend` : "None"}</strong>
+                    </div>
+                    <div className="policy-card-detail">
+                      <p className="policy-card-label">Deletion warning</p>
+                      <strong>{typeof row.rule_json.warning_days_before_delete === "number" && row.rule_json.warning_days_before_delete > 0 ? `${row.rule_json.warning_days_before_delete} days before delete` : "None"}</strong>
+                    </div>
+                  </>
                 ) : null}
               </div>
             </div>
@@ -282,6 +297,11 @@ export function PolicyExecutionWorkspace() {
                 {" "}
                 - due warnings: {preview.payload.graduation_preview.eligible_warnings} - due suspensions:{" "}
                 {preview.payload.graduation_preview.eligible_suspensions}
+                {preview.payload.graduation_preview.eligible_deletion_warnings !== undefined ? (
+                  <>
+                    {" "}- due deletion warnings: {preview.payload.graduation_preview.eligible_deletion_warnings}
+                  </>
+                ) : null}
               </>
             ) : null}
           </p>

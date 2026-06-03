@@ -77,6 +77,8 @@ class PolicyController extends Controller
             $payload['graduation_preview'] = $this->graduationPreview->previewCounts($rules);
             $payload['suspend_after_days'] = (int) ($rules['suspend_after_days'] ?? config('automation.graduation.suspend_after_days', 60));
             $payload['warning_days_before_suspend'] = (int) ($rules['warning_days_before_suspend'] ?? config('automation.graduation.warning_days_before_suspend', 14));
+            $payload['permanent_delete_after_days'] = (int) ($rules['permanent_delete_after_days'] ?? 0);
+            $payload['warning_days_before_delete'] = (int) ($rules['warning_days_before_delete'] ?? 0);
         }
 
         return response()->json($payload);
@@ -116,6 +118,8 @@ class PolicyController extends Controller
         if ($type === 'student_graduation') {
             $suspendAfter = (int) ($ruleJson['suspend_after_days'] ?? config('automation.graduation.suspend_after_days', 60));
             $warningBefore = (int) ($ruleJson['warning_days_before_suspend'] ?? config('automation.graduation.warning_days_before_suspend', 14));
+            $deleteAfter = isset($ruleJson['permanent_delete_after_days']) ? (int) $ruleJson['permanent_delete_after_days'] : 0;
+            $warningDeleteBefore = (int) ($ruleJson['warning_days_before_delete'] ?? 0);
 
             if ($suspendAfter < 1) {
                 throw ValidationException::withMessages([
@@ -126,6 +130,30 @@ class PolicyController extends Controller
             if ($warningBefore < 0 || $warningBefore >= $suspendAfter) {
                 throw ValidationException::withMessages([
                     'rule_json' => ['warning_days_before_suspend must be between 0 and suspend_after_days.'],
+                ]);
+            }
+
+            if ($deleteAfter < 0) {
+                throw ValidationException::withMessages([
+                    'rule_json' => ['permanent_delete_after_days must be 0 or greater.'],
+                ]);
+            }
+
+            if ($warningDeleteBefore < 0) {
+                throw ValidationException::withMessages([
+                    'rule_json' => ['warning_days_before_delete must be 0 or greater.'],
+                ]);
+            }
+
+            if ($deleteAfter === 0 && $warningDeleteBefore > 0) {
+                throw ValidationException::withMessages([
+                    'rule_json' => ['warning_days_before_delete requires permanent_delete_after_days to be set.'],
+                ]);
+            }
+
+            if ($deleteAfter > 0 && $warningDeleteBefore >= $deleteAfter) {
+                throw ValidationException::withMessages([
+                    'rule_json' => ['warning_days_before_delete must be less than permanent_delete_after_days.'],
                 ]);
             }
 

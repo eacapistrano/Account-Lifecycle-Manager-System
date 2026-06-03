@@ -63,18 +63,18 @@ class EvaluatePoliciesJob implements ShouldQueue
         $result = $evaluator->evaluate($policy);
         $failures = $result['failures'];
 
-        if ($result['warnings_sent'] === 0 && $result['suspended'] === 0 && $failures === []) {
+        if ($result['warnings_sent'] === 0 && $result['deletion_warnings_sent'] === 0 && $result['suspended'] === 0 && $failures === []) {
             $policy->last_status = 'held';
-            $policy->hold_reason = 'No graduated accounts due for warning or suspension.';
+            $policy->hold_reason = 'No graduated accounts due for warning, deletion warning, or suspension.';
             $policy->save();
-            $this->notifyHeld($policy, 'No graduated accounts due for warning or suspension.', $notifier);
+            $this->notifyHeld($policy, 'No graduated accounts due for warning, deletion warning, or suspension.', $notifier);
 
             return;
         }
 
         $policy->last_status = $failures === [] ? 'executed' : 'held';
         $policy->hold_reason = $failures === []
-            ? sprintf('Warnings sent: %d. Suspended: %d.', $result['warnings_sent'], $result['suspended'])
+            ? sprintf('Warnings sent: %d. Deletion warnings sent: %d. Suspended: %d.', $result['warnings_sent'], $result['deletion_warnings_sent'], $result['suspended'])
             : 'One or more graduation lifecycle operations failed.';
         $policy->save();
 

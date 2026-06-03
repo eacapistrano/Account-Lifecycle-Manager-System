@@ -45,6 +45,8 @@ export function PolicyEditorModal({ open, policy, disabled, onClose, onSaved }: 
   const [schoolYear, setSchoolYear] = useState("");
   const [suspendAfterDays, setSuspendAfterDays] = useState(60);
   const [warningDaysBefore, setWarningDaysBefore] = useState(14);
+  const [permanentDeleteAfterDays, setPermanentDeleteAfterDays] = useState(0);
+  const [warningDaysBeforeDelete, setWarningDaysBeforeDelete] = useState(14);
   const [graduationStatus, setGraduationStatus] = useState("graduated");
   const [executionLocal, setExecutionLocal] = useState("");
   const [cronExpression, setCronExpression] = useState("");
@@ -67,6 +69,8 @@ export function PolicyEditorModal({ open, policy, disabled, onClose, onSaved }: 
       setSchoolYear(typeof rules.school_year === "string" ? rules.school_year : "");
       setSuspendAfterDays(typeof rules.suspend_after_days === "number" ? rules.suspend_after_days : 60);
       setWarningDaysBefore(typeof rules.warning_days_before_suspend === "number" ? rules.warning_days_before_suspend : 14);
+      setPermanentDeleteAfterDays(typeof rules.permanent_delete_after_days === "number" ? rules.permanent_delete_after_days : 0);
+      setWarningDaysBeforeDelete(typeof rules.warning_days_before_delete === "number" ? rules.warning_days_before_delete : 14);
       setGraduationStatus(typeof rules.graduation_status === "string" ? rules.graduation_status : "graduated");
       setExecutionLocal(datetimeLocalFromIso(policy.execution_at));
       setCronExpression(policy.cron_expression ?? "");
@@ -79,6 +83,8 @@ export function PolicyEditorModal({ open, policy, disabled, onClose, onSaved }: 
       setSchoolYear("");
       setSuspendAfterDays(60);
       setWarningDaysBefore(14);
+      setPermanentDeleteAfterDays(0);
+      setWarningDaysBeforeDelete(14);
       setGraduationStatus("graduated");
       setExecutionLocal("");
       setCronExpression("");
@@ -108,12 +114,34 @@ export function PolicyEditorModal({ open, policy, disabled, onClose, onSaved }: 
         setError("Warning days must be less than suspend after days.");
         return;
       }
+      if (permanentDeleteAfterDays < 0) {
+        setError("Permanent delete after days must be 0 or greater.");
+        return;
+      }
+      if (warningDaysBeforeDelete < 0) {
+        setError("Deletion warning days must be 0 or greater.");
+        return;
+      }
+      if (permanentDeleteAfterDays === 0 && warningDaysBeforeDelete > 0) {
+        setError("Deletion warning requires a permanent delete after days value.");
+        return;
+      }
+      if (permanentDeleteAfterDays > 0 && warningDaysBeforeDelete >= permanentDeleteAfterDays) {
+        setError("Deletion warning days must be less than permanent delete after days.");
+        return;
+      }
       ruleJson = {
         type: "student_graduation",
         graduation_status: graduationStatus.trim() || "graduated",
         suspend_after_days: suspendAfterDays,
         warning_days_before_suspend: warningDaysBefore,
       };
+      if (permanentDeleteAfterDays > 0) {
+        ruleJson.permanent_delete_after_days = permanentDeleteAfterDays;
+      }
+      if (warningDaysBeforeDelete > 0) {
+        ruleJson.warning_days_before_delete = warningDaysBeforeDelete;
+      }
       resolvedAction = "suspend";
     } else {
       const deptTrimmed = department.trim();
@@ -221,9 +249,30 @@ export function PolicyEditorModal({ open, policy, disabled, onClose, onSaved }: 
                   disabled={formDisabled}
                 />
               </label>
+              <label>
+                Permanent delete after suspension (days)
+                <input
+                  type="number"
+                  min={0}
+                  value={permanentDeleteAfterDays}
+                  onChange={(ev) => setPermanentDeleteAfterDays(Number(ev.target.value))}
+                  disabled={formDisabled}
+                />
+              </label>
+              <label>
+                Warning email before deletion (days)
+                <input
+                  type="number"
+                  min={0}
+                  value={warningDaysBeforeDelete}
+                  onChange={(ev) => setWarningDaysBeforeDelete(Number(ev.target.value))}
+                  disabled={formDisabled}
+                />
+              </label>
               <p className="hint policy-form-span">
-                Graduated students receive a backup reminder email starting {warningDaysBefore} day(s) before suspension. Accounts
-                are suspended {suspendAfterDays} day(s) after their graduation date.
+                Graduated students receive a backup reminder email starting {warningDaysBefore} day(s) before suspension.
+                {permanentDeleteAfterDays > 0 ? ` A separate deletion warning email will be sent ${warningDaysBeforeDelete} day(s) before permanent deletion.` : ''}
+                Accounts are suspended {suspendAfterDays} day(s) after their graduation date.
               </p>
             </>
           ) : (
